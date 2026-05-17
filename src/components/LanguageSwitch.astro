@@ -1,0 +1,95 @@
+---
+import type { Locale } from "@/types";
+import { switchPathLocale } from "@/lib/i18n";
+
+interface Props {
+  currentLocale: Locale;
+  currentPath: string;
+  basePath: string;
+}
+
+const { currentLocale, currentPath, basePath } = Astro.props;
+
+const normalizeBase = (value: string) => {
+  if (!value || value === "/") {
+    return "";
+  }
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+};
+
+const stripBase = (path: string, normalizedBase: string) => {
+  if (!normalizedBase) {
+    return path;
+  }
+  return path.startsWith(normalizedBase) ? path.slice(normalizedBase.length) || "/" : path;
+};
+
+const base = normalizeBase(basePath);
+const sourcePath = stripBase(currentPath || "/", base);
+const frHref = `${base}${switchPathLocale(sourcePath, "fr")}`;
+const enHref = `${base}${switchPathLocale(sourcePath, "en")}`;
+
+const labels: Record<Locale, string> = {
+  fr: "🇫🇷 FR",
+  en: "🇬🇧 EN"
+};
+---
+
+<div
+  class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1 backdrop-blur-xl"
+  role="group"
+  aria-label={currentLocale === "fr" ? "Changer la langue" : "Switch language"}
+>
+  {(["fr", "en"] as Locale[]).map((locale) => {
+    const isActive = currentLocale === locale;
+    const href = locale === "fr" ? frHref : enHref;
+    const ariaLabel =
+      locale === "fr"
+        ? currentLocale === "fr"
+          ? "Langue française active"
+          : "Passer en français"
+        : currentLocale === "en"
+          ? "English language active"
+          : "Switch to English";
+
+    return (
+      <a
+        href={href}
+        data-locale-target={locale}
+        class={`inline-flex h-11 min-w-[44px] items-center justify-center rounded-full px-3 text-xs font-semibold transition ${
+          isActive
+            ? "bg-white/15 text-white shadow-glow"
+            : "text-slate-300 hover:bg-white/10 hover:text-white"
+        }`}
+        aria-current={isActive ? "page" : undefined}
+        aria-label={ariaLabel}
+      >
+        {labels[locale]}
+      </a>
+    );
+  })}
+</div>
+
+<script is:inline>
+  (() => {
+    const root = document.currentScript?.previousElementSibling;
+    if (!(root instanceof HTMLElement)) {
+      return;
+    }
+
+    const links = root.querySelectorAll("[data-locale-target]");
+    for (const link of links) {
+      link.addEventListener("click", () => {
+        const locale = link.getAttribute("data-locale-target");
+        if (!locale) {
+          return;
+        }
+        try {
+          localStorage.setItem("deckradar.lang", locale);
+        } catch {
+          // localStorage blocked.
+        }
+      });
+    }
+  })();
+</script>

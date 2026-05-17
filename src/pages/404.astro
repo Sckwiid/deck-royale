@@ -1,0 +1,45 @@
+---
+import "@/styles/global.css";
+
+const base = import.meta.env.BASE_URL;
+const normalizedBase = base === "/" ? "" : base.slice(0, -1);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>404 | DeckRadar</title>
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body class="page-shell">
+    <main class="section-wrap flex min-h-screen items-center justify-center">
+      <div class="glass-panel max-w-xl p-6 text-center">
+        <h1 class="font-display text-4xl font-bold text-white">Route Not Found</h1>
+        <p class="mt-2 text-sm text-slate-300">
+          Redirecting if this is a dynamic player path, otherwise go back to home.
+        </p>
+        <a href={`${normalizedBase}/en/`} class="mt-5 inline-flex rounded-lg border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/10">
+          Back to DeckRadar
+        </a>
+      </div>
+    </main>
+
+    <script is:inline define:vars={{ normalizedBase }}>
+      const fullPath = window.location.pathname;
+      const path = normalizedBase && fullPath.startsWith(normalizedBase)
+        ? fullPath.slice(normalizedBase.length)
+        : fullPath;
+
+      const match = path.match(/^\/(fr|en)\/player\/([^/]+)\/?$/);
+
+      if (match) {
+        const locale = match[1];
+        const tag = match[2];
+        const target = `${normalizedBase}/${locale}/player/?tag=${encodeURIComponent(decodeURIComponent(tag))}`;
+        window.location.replace(target);
+      }
+    </script>
+  </body>
+</html>

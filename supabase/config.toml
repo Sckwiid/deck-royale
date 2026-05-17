@@ -1,0 +1,41 @@
+project_id = "deckradar"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = false
+
+[functions.get-player]
+verify_jwt = false
+
+[functions.recommend-decks]
+verify_jwt = false
+
+[functions.sync-cards]
+verify_jwt = false
+
+[functions.analyze-player]
+verify_jwt = false
+
+[functions.scan-player]
+verify_jwt = false
+
+[functions.cron-scan]
+verify_jwt = false
+
+[functions.pro-contact]
+verify_jwt = false

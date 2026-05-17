@@ -1,0 +1,29 @@
+---
+import MainLayout from "@/layouts/MainLayout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer";
+import PlayerDashboard from "@/components/PlayerDashboard";
+import { getDictionary } from "@/lib/i18n";
+
+export function getStaticPaths() {
+  return [{ params: { tag: "%23DECKRADAR" } }, { params: { tag: "%232PP" } }];
+}
+
+const locale = "en" as const;
+const dict = getDictionary(locale);
+const basePath = import.meta.env.BASE_URL;
+const currentPath = Astro.url.pathname;
+const tag = decodeURIComponent(Astro.params.tag ?? "");
+---
+
+<MainLayout
+  title={dict.seo.playerTitle}
+  description={dict.seo.homeDescription}
+  locale={locale}
+  path={currentPath}
+  robots="noindex, nofollow"
+>
+  <Header locale={locale} dict={dict} currentPath={currentPath} basePath={basePath} />
+  <PlayerDashboard locale={locale} initialTag={tag} client:load />
+  <Footer dict={dict} />
+</MainLayout>

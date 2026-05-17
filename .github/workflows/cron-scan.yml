@@ -1,0 +1,39 @@
+name: Cron Scan Players
+
+on:
+  schedule:
+    - cron: "0 6,14,22 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Maximum players to scan"
+        required: false
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  cron-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger Supabase cron-scan function
+        env:
+          CRON_SCAN_URL: ${{ secrets.CRON_SCAN_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          LIMIT: ${{ github.event.inputs.limit || '100' }}
+        run: |
+          test -n "$CRON_SCAN_URL"
+          test -n "$CRON_SECRET"
+
+          if ! [[ "$LIMIT" =~ ^[0-9]+$ ]]; then
+            LIMIT="100"
+          fi
+
+          echo "Running cron scan with limit=$LIMIT"
+          curl --fail-with-body --show-error --silent \
+            --request POST "$CRON_SCAN_URL" \
+            --header "Content-Type: application/json" \
+            --header "x-cron-secret: $CRON_SECRET" \
+            --data "{\"limit\": $LIMIT}"

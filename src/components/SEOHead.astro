@@ -1,0 +1,81 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  locale: "fr" | "en";
+  path: string;
+  image?: string;
+  robots?: string;
+}
+
+const basePath = import.meta.env.BASE_URL;
+const manifestHref = `${basePath}manifest.webmanifest`;
+const defaultOgImage = `${basePath}og-cover.svg`;
+const iconHref = `${basePath}icon.svg`;
+
+const { title, description, locale, path, image = defaultOgImage, robots = "index, follow" } =
+  Astro.props;
+const canonical = new URL(path, Astro.site).toString();
+const ogImage = new URL(image, Astro.site).toString();
+const siteRoot = new URL("/", Astro.site).toString();
+
+const frAlt = path.startsWith("/fr/") ? path : path.replace("/en/", "/fr/");
+const enAlt = path.startsWith("/en/") ? path : path.replace("/fr/", "/en/");
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "DeckRadar",
+  url: siteRoot,
+  inLanguage: locale === "fr" ? "fr-FR" : "en-GB",
+  potentialAction: {
+    "@type": "SearchAction",
+    target: `${siteRoot}en/analyze/?tag={search_term_string}`,
+    "query-input": "required name=search_term_string"
+  }
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "DeckRadar",
+  url: siteRoot,
+  logo: new URL(iconHref, Astro.site).toString()
+};
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0b1222" />
+<meta name="format-detection" content="telephone=no" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<meta name="robots" content={robots} />
+<link rel="canonical" href={canonical} />
+<link rel="alternate" hreflang="fr" href={new URL(frAlt, Astro.site).toString()} />
+<link rel="alternate" hreflang="en" href={new URL(enAlt, Astro.site).toString()} />
+<link rel="alternate" hreflang="x-default" href={new URL("/en/", Astro.site).toString()} />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="dns-prefetch" href="//api-assets.clashroyale.com" />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap"
+/>
+<link rel="manifest" href={manifestHref} />
+<link rel="icon" href={iconHref} type="image/svg+xml" />
+<link rel="apple-touch-icon" href={iconHref} />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="DeckRadar" />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:image" content={ogImage} />
+<meta property="og:locale" content={locale === "fr" ? "fr_FR" : "en_GB"} />
+<meta property="og:locale:alternate" content={locale === "fr" ? "en_GB" : "fr_FR"} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImage} />
+<script is:inline type="application/ld+json" set:html={JSON.stringify(websiteJsonLd)} />
+<script is:inline type="application/ld+json" set:html={JSON.stringify(organizationJsonLd)} />

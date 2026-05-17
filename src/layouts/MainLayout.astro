@@ -1,0 +1,35 @@
+---
+import SEOHead from "@/components/SEOHead.astro";
+import "@/styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  locale: "fr" | "en";
+  path: string;
+  robots?: string;
+}
+
+const { title, description, locale, path, robots } = Astro.props;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <SEOHead title={title} description={description} locale={locale} path={path} robots={robots} />
+  </head>
+  <body class="page-shell">
+    <slot />
+
+    <script is:inline define:vars={{ locale }}>
+      try {
+        const stored = localStorage.getItem("deckradar.lang");
+        if (stored !== locale) {
+          localStorage.setItem("deckradar.lang", locale);
+        }
+      } catch {
+        // localStorage blocked
+      }
+    </script>
+  </body>
+</html>

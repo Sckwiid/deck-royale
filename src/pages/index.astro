@@ -1,0 +1,25 @@
+---
+const base = import.meta.env.BASE_URL;
+const safeBase = base.endsWith("/") ? base : `${base}/`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeckRadar</title>
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body>
+    <script is:inline define:vars={{ safeBase }}>
+      const saved = localStorage.getItem("deckradar.lang");
+      const browserLang = (navigator.language || "en").toLowerCase();
+      const locale = saved ?? (browserLang.startsWith("fr") ? "fr" : "en");
+      window.location.replace(`${safeBase}${locale}/`);
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content={`0;url=${safeBase}en/`} />
+    </noscript>
+  </body>
+</html>

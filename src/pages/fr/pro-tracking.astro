@@ -1,0 +1,50 @@
+---
+import MainLayout from "@/layouts/MainLayout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer";
+import ProTrackingForm from "@/components/ProTrackingForm";
+import { getDictionary } from "@/lib/i18n";
+
+const locale = "fr" as const;
+const dict = getDictionary(locale);
+const basePath = import.meta.env.BASE_URL;
+const currentPath = Astro.url.pathname;
+const description =
+  "Demandez le Pro Tracking DeckRadar pour suivre vos decks, vos adversaires directs et vos changements de stratégie avec des scans plus fréquents.";
+---
+
+<MainLayout title={dict.seo.proTitle} description={description} locale={locale} path={currentPath}>
+  <Header locale={locale} dict={dict} currentPath={currentPath} basePath={basePath} />
+
+  <section class="section-wrap mt-8 space-y-4 pb-16 sm:pb-20">
+    <article class="glass-panel scan-layer p-5 sm:p-6">
+      <h1 class="font-display text-3xl font-bold text-white">{dict.proTrackingPage.title}</h1>
+      <p class="mt-2 text-sm leading-relaxed text-slate-300">{dict.proTrackingPage.subtitle}</p>
+      <p class="mt-3 text-xs uppercase tracking-[0.08em] text-cyan-200/80">
+        {dict.proTrackingPage.noPayment}
+      </p>
+      <p class="mt-1 text-xs uppercase tracking-[0.08em] text-violet-200/80">
+        {dict.proTrackingPage.noAutoEnable}
+      </p>
+    </article>
+
+    <section class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {dict.proTrackingPage.features.map((feature) => (
+        <article class="glass-panel rounded-xl border border-white/10 bg-white/5 p-4">
+          <p class="text-sm font-semibold text-white">{feature}</p>
+        </article>
+      ))}
+    </section>
+
+    <ProTrackingForm locale={locale} client:idle />
+
+    <article class="glass-panel p-5">
+      <h2 class="font-display text-2xl font-semibold text-white">Pourquoi ce mode est ciblé compétitif</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-300">
+        Le Pro Tracking DeckRadar est conçu pour les joueurs qui veulent une lecture plus fine de leur progression réelle. Le suivi reste strictement limité à vos adversaires directs, sans propagation indirecte, pour garder une analyse exploitable et fiable.
+      </p>
+    </article>
+  </section>
+
+  <Footer dict={dict} />
+</MainLayout>

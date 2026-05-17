@@ -1,0 +1,69 @@
+---
+import type { Dictionary } from "@/data/i18n";
+import type { Locale } from "@/types";
+import LanguageSwitch from "@/components/LanguageSwitch.astro";
+
+interface HeaderProps {
+  locale: Locale;
+  dict: Dictionary;
+  currentPath: string;
+  basePath: string;
+}
+
+const { locale, dict, currentPath, basePath } = Astro.props as HeaderProps;
+
+const links =
+  locale === "fr"
+    ? [
+        { href: "/fr/", label: dict.nav.home },
+        { href: "/fr/analyser/", label: dict.nav.analyze },
+        { href: "/fr/meta/", label: dict.nav.meta },
+        { href: "/fr/pro-tracking/", label: dict.nav.proTracking }
+      ]
+    : [
+        { href: "/en/", label: dict.nav.home },
+        { href: "/en/analyze/", label: dict.nav.analyze },
+        { href: "/en/meta/", label: dict.nav.meta },
+        { href: "/en/pro-tracking/", label: dict.nav.proTracking }
+      ];
+
+const normalizedBase =
+  !basePath || basePath === "/" ? "" : basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+---
+
+<header class="section-wrap pt-5 sm:pt-7">
+  <div class="glass-panel flex flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5 lg:flex-row lg:items-center lg:justify-between">
+    <div class="flex items-center justify-between gap-4">
+      <a href={`${normalizedBase}/${locale}/`} class="inline-flex items-center gap-3">
+        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/10 font-display text-lg font-bold text-cyan-200">
+          DR
+        </span>
+        <div>
+          <p class="font-display text-xl font-bold tracking-wide text-white">DeckRadar</p>
+          <p class="text-[11px] uppercase tracking-[0.3em] text-cyan-200/80">Tactical Arena Hub</p>
+        </div>
+      </a>
+      <div class="lg:hidden">
+        <LanguageSwitch currentLocale={locale} currentPath={currentPath} basePath={basePath} />
+      </div>
+    </div>
+
+    <nav
+      class="flex flex-wrap items-center gap-2 sm:gap-3"
+      aria-label={locale === "fr" ? "Navigation principale" : "Main navigation"}
+    >
+      {links.map((link) => (
+        <a
+          href={`${normalizedBase}${link.href}`}
+          class="inline-flex h-11 min-w-[44px] items-center rounded-lg border border-white/10 px-3 text-sm text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/10 hover:text-white"
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="hidden lg:block">
+      <LanguageSwitch currentLocale={locale} currentPath={currentPath} basePath={basePath} />
+    </div>
+  </div>
+</header>

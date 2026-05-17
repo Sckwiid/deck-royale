@@ -1,0 +1,52 @@
+---
+import MainLayout from "@/layouts/MainLayout.astro";
+import Header from "@/components/Header.astro";
+import HeroSearch from "@/components/HeroSearch.astro";
+import Footer from "@/components/Footer";
+import TrophyMapPreview from "@/components/TrophyMapPreview";
+import { getDictionary } from "@/lib/i18n";
+
+const locale = "fr" as const;
+const dict = getDictionary(locale);
+const basePath = import.meta.env.BASE_URL;
+const currentPath = Astro.url.pathname;
+---
+
+<MainLayout
+  title={dict.seo.homeTitle}
+  description={dict.seo.homeDescription}
+  locale={locale}
+  path={currentPath}
+>
+  <Header locale={locale} dict={dict} currentPath={currentPath} basePath={basePath} />
+  <HeroSearch locale={locale} dict={dict} basePath={basePath} />
+
+  <section class="section-wrap mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <TrophyMapPreview title={dict.home.trophyPreviewTitle} subtitle={dict.home.trophyPreviewSubtitle} />
+
+    <div class="glass-panel p-4 sm:p-5">
+      <h2 class="font-display text-2xl font-bold text-white">Pourquoi DeckRadar</h2>
+      <div class="mt-4 grid grid-cols-1 gap-3">
+        {dict.home.advantages.map((advantage) => (
+          <article class="rounded-xl border border-white/10 bg-white/5 p-4">
+            <h3 class="font-display text-lg font-semibold text-white">{advantage.title}</h3>
+            <p class="mt-2 text-sm text-slate-300">{advantage.description}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-wrap mt-8">
+    <article class="glass-panel p-5 sm:p-6">
+      <h2 class="font-display text-2xl font-bold text-white">{dict.home.seoHeading}</h2>
+      <div class="mt-3 space-y-3 text-sm leading-relaxed text-slate-300">
+        {dict.home.seoParagraphs.map((paragraph) => (
+          <p>{paragraph}</p>
+        ))}
+      </div>
+    </article>
+  </section>
+
+  <Footer dict={dict} />
+</MainLayout>

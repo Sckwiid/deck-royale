@@ -1,0 +1,29 @@
+name: Sync Clash Royale Cards
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Supabase sync-cards function
+        env:
+          SYNC_CARDS_URL: ${{ secrets.SYNC_CARDS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SYNC_CARDS_URL"
+          test -n "$CRON_SECRET"
+
+          echo "Running daily cards sync"
+          curl --fail-with-body --show-error --silent \
+            --request POST "$SYNC_CARDS_URL" \
+            --header "Content-Type: application/json" \
+            --header "x-cron-secret: $CRON_SECRET" \
+            --data "{}"

@@ -1,0 +1,94 @@
+---
+import MainLayout from "@/layouts/MainLayout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer";
+import SeoDeckList from "@/components/SeoDeckList.astro";
+import { getDictionary } from "@/lib/i18n";
+import { loadRankedDecks } from "@/lib/metaDeckData";
+import {
+  buildAnalyzePath,
+  buildTrophyRoadPath,
+  getRankedFaq,
+  getRankedHeading,
+  getRankedMetaDescription,
+  getRankedMetaTitle
+} from "@/lib/metaSeo";
+import { buildBreadcrumbJsonLd, buildFaqJsonLd } from "@/lib/structuredData";
+
+const locale = "fr" as const;
+const dict = getDictionary(locale);
+const basePath = import.meta.env.BASE_URL;
+const currentPath = Astro.url.pathname;
+
+const title = getRankedMetaTitle(locale);
+const description = getRankedMetaDescription(locale);
+const heading = getRankedHeading(locale);
+const decks = await loadRankedDecks();
+const faqEntries = getRankedFaq(locale);
+
+const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+  { name: "DeckRadar", item: new URL("/fr/", Astro.site).toString() },
+  { name: "Meta", item: new URL("/fr/meta/", Astro.site).toString() },
+  { name: "Ranked", item: new URL("/fr/meta/ranked/", Astro.site).toString() }
+]);
+
+const faqJsonLd = buildFaqJsonLd(faqEntries);
+---
+
+<MainLayout title={title} description={description} locale={locale} path={currentPath}>
+  <Header locale={locale} dict={dict} currentPath={currentPath} basePath={basePath} />
+
+  <section class="section-wrap mt-8 space-y-5">
+    <nav aria-label="Breadcrumb" class="text-xs text-slate-300">
+      <ol class="flex flex-wrap items-center gap-2">
+        <li><a href="/fr/" class="hover:text-white">DeckRadar</a></li>
+        <li>/</li>
+        <li><a href="/fr/meta/" class="hover:text-white">Meta</a></li>
+        <li>/</li>
+        <li class="text-white">Ranked</li>
+      </ol>
+    </nav>
+
+    <article class="glass-panel p-5 sm:p-6">
+      <h1 class="font-display text-3xl font-bold text-white">{heading}</h1>
+      <p class="mt-3 text-sm leading-relaxed text-slate-300">
+        Cette page isole les decks ranked qui tiennent le rythme sur un grand volume de games. Elle complete les pages Trophy Road pour connecter performance globale et execution par range.
+      </p>
+      <p class="mt-2 text-xs uppercase tracking-[0.08em] text-cyan-200/80">
+        Stats mises a jour automatiquement chaque jour
+      </p>
+    </article>
+
+    <SeoDeckList locale={locale} decks={decks} />
+
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildTrophyRoadPath(locale)}>
+        Trophy Road par range
+      </a>
+      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildAnalyzePath(locale)}>
+        Analyse joueur
+      </a>
+      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href="/fr/pro-tracking/">
+        Pro Tracking
+      </a>
+    </div>
+
+    <article class="glass-panel p-5">
+      <h2 class="font-display text-2xl font-semibold text-white">FAQ</h2>
+      <div class="mt-4 space-y-3">
+        {faqEntries.map((entry) => (
+          <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+            <h3 class="text-sm font-semibold text-white">{entry.question}</h3>
+            <p class="mt-2 text-sm text-slate-300">{entry.answer}</p>
+          </div>
+        ))}
+      </div>
+    </article>
+  </section>
+
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
+
+  <Footer dict={dict} />
+</MainLayout>
+

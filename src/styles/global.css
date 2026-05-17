@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  @apply bg-tactical-950 text-white font-body antialiased;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(56, 246, 255, 0.08), transparent 32%),
+    radial-gradient(circle at 85% 0%, rgba(151, 104, 255, 0.1), transparent 28%),
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(140deg, #070b14, #0a1223 55%, #101a33);
+  background-size:
+    auto,
+    auto,
+    34px 34px,
+    34px 34px,
+    auto;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(56, 246, 255, 0.95);
+  outline-offset: 2px;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.page-shell {
+  @apply min-h-screen overflow-x-hidden;
+}
+
+.glass-panel {
+  @apply rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-glass;
+}
+
+.section-wrap {
+  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+}
+
+.scan-layer {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 20%,
+    rgba(56, 246, 255, 0.1) 50%,
+    transparent 80%
+  );
+  transform: translateY(-100%);
+  animation: scanline 3.8s linear infinite;
+}
+
+.text-gradient {
+  background: linear-gradient(120deg, #38f6ff, #9768ff 45%, #ffce52 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .scan-layer::after {
+    animation: none !important;
+  }
+}

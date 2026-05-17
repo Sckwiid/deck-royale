@@ -1,0 +1,83 @@
+---
+import MainLayout from "@/layouts/MainLayout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer";
+import { getDictionary } from "@/lib/i18n";
+import {
+  buildAnalyzePath,
+  buildMetaPath,
+  buildRankedPath,
+  buildTrophyRoadPath,
+  getMetaHubDescription,
+  getMetaHubTitle
+} from "@/lib/metaSeo";
+import { buildBreadcrumbJsonLd } from "@/lib/structuredData";
+
+const locale = "en" as const;
+const dict = getDictionary(locale);
+const basePath = import.meta.env.BASE_URL;
+const currentPath = Astro.url.pathname;
+const title = getMetaHubTitle(locale);
+const description = getMetaHubDescription(locale);
+
+const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+  { name: "DeckRadar", item: new URL("/en/", Astro.site).toString() },
+  { name: "Meta", item: new URL("/en/meta/", Astro.site).toString() }
+]);
+---
+
+<MainLayout title={title} description={description} locale={locale} path={currentPath}>
+  <Header locale={locale} dict={dict} currentPath={currentPath} basePath={basePath} />
+
+  <section class="section-wrap mt-8 space-y-5">
+    <nav aria-label="Breadcrumb" class="text-xs text-slate-300">
+      <ol class="flex flex-wrap items-center gap-2">
+        <li><a href="/en/" class="hover:text-white">DeckRadar</a></li>
+        <li>/</li>
+        <li class="text-white">Meta</li>
+      </ol>
+    </nav>
+
+    <div class="glass-panel p-5 sm:p-6">
+      <h1 class="font-display text-3xl font-bold text-white">Clash Royale Meta and Decks by Trophy Range</h1>
+      <p class="mt-3 text-sm leading-relaxed text-slate-300">
+        DeckRadar aggregates observed performance from Trophy Road and ranked play to surface decks that actually convert in your competitive context. Each page emphasizes win rate, game volume, and direct links to high-value ranges.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <a href={buildTrophyRoadPath(locale)} class="glass-panel p-5 transition hover:border-cyan-300/35">
+        <h2 class="font-display text-2xl font-semibold text-white">Trophy Road by range</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          Compare top decks in 250-trophy buckets, including strategic 12,000 to 13,000 brackets.
+        </p>
+      </a>
+
+      <a href={buildRankedPath(locale)} class="glass-panel p-5 transition hover:border-cyan-300/35">
+        <h2 class="font-display text-2xl font-semibold text-white">Best ranked deck</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          Track ranked decks with the best balance between win rate reliability and game sample depth.
+        </p>
+      </a>
+    </div>
+
+    <div class="glass-panel p-5">
+      <h2 class="font-display text-2xl font-semibold text-white">Useful links</h2>
+      <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 hover:bg-white/10" href={buildAnalyzePath(locale)}>
+          Analyze a player profile
+        </a>
+        <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 hover:bg-white/10" href="/en/pro-tracking/">
+          Pro Tracking
+        </a>
+        <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 hover:bg-white/10" href={buildMetaPath("fr")}>
+          FR Version
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+
+  <Footer dict={dict} />
+</MainLayout>
