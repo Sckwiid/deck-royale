@@ -7,7 +7,7 @@ import PlayerDashboardSkeleton from "@/components/PlayerDashboardSkeleton";
 import ResponsiveTabs from "@/components/ResponsiveTabs";
 import TrophyRangePill from "@/components/TrophyRangePill";
 import WinrateBadge from "@/components/WinrateBadge";
-import { analyzePlayer } from "@/lib/api";
+import { FunctionApiError, analyzePlayer } from "@/lib/api";
 import { getDictionary } from "@/lib/i18n";
 import type { AnalyzePlayerResponse, Locale } from "@/types";
 
@@ -61,6 +61,26 @@ const deckKeyShort = (deckKey: string | null | undefined) => {
   return `${deckKey.slice(0, 8)}…`;
 };
 
+const formatLoadError = (error: unknown, locale: Locale) => {
+  const fallback =
+    locale === "fr"
+      ? "Impossible de charger l'analyse joueur actuellement."
+      : "Unable to load player analysis right now.";
+
+  if (error instanceof FunctionApiError) {
+    const status = `HTTP ${error.status}`;
+    const code = error.code ? ` · ${error.code}` : "";
+    const message = error.message?.trim() || fallback;
+    return `${message} (${status}${code})`;
+  }
+
+  if (error instanceof Error && error.message) {
+    return `${fallback} (${error.message})`;
+  }
+
+  return fallback;
+};
+
 export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardProps) {
   const dict = getDictionary(locale);
   const [resolvedTag, setResolvedTag] = useState("");
@@ -93,12 +113,8 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
       setPayload(result);
       localStorage.setItem("deckradar.lastTag", tag.replace(/^#/, ""));
-    } catch {
-      setError(
-        locale === "fr"
-          ? "Impossible de charger l'analyse joueur actuellement."
-          : "Unable to load player analysis right now."
-      );
+    } catch (error) {
+      setError(formatLoadError(error, locale));
     } finally {
       setLoading(false);
     }
