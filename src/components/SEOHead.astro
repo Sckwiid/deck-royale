@@ -17,7 +17,19 @@ const { title, description, locale, path, image = defaultOgImage, robots = "inde
   Astro.props;
 const canonical = new URL(path, Astro.site).toString();
 const ogImage = new URL(image, Astro.site).toString();
-const siteRoot = new URL("/", Astro.site).toString();
+const normalizedBasePath =
+  !basePath || basePath === "/" ? "/" : basePath.endsWith("/") ? basePath : `${basePath}/`;
+const siteRoot = new URL(normalizedBasePath, Astro.site).toString();
+const basePathPrefix = normalizedBasePath === "/" ? "" : normalizedBasePath.replace(/\/$/, "");
+const withBasePath = (route: string) => {
+  if (!basePathPrefix) {
+    return route;
+  }
+  if (route === basePathPrefix || route.startsWith(`${basePathPrefix}/`)) {
+    return route;
+  }
+  return `${basePathPrefix}${route}`;
+};
 
 const frAlt = path.startsWith("/fr/") ? path : path.replace("/en/", "/fr/");
 const enAlt = path.startsWith("/en/") ? path : path.replace("/fr/", "/en/");
@@ -30,7 +42,7 @@ const websiteJsonLd = {
   inLanguage: locale === "fr" ? "fr-FR" : "en-GB",
   potentialAction: {
     "@type": "SearchAction",
-    target: `${siteRoot}en/analyze/?tag={search_term_string}`,
+    target: `${new URL(withBasePath("/en/analyze/"), Astro.site).toString()}?tag={search_term_string}`,
     "query-input": "required name=search_term_string"
   }
 };
@@ -52,9 +64,9 @@ const organizationJsonLd = {
 <meta name="description" content={description} />
 <meta name="robots" content={robots} />
 <link rel="canonical" href={canonical} />
-<link rel="alternate" hreflang="fr" href={new URL(frAlt, Astro.site).toString()} />
-<link rel="alternate" hreflang="en" href={new URL(enAlt, Astro.site).toString()} />
-<link rel="alternate" hreflang="x-default" href={new URL("/en/", Astro.site).toString()} />
+<link rel="alternate" hreflang="fr" href={new URL(withBasePath(frAlt), Astro.site).toString()} />
+<link rel="alternate" hreflang="en" href={new URL(withBasePath(enAlt), Astro.site).toString()} />
+<link rel="alternate" hreflang="x-default" href={new URL(withBasePath("/en/"), Astro.site).toString()} />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="dns-prefetch" href="//api-assets.clashroyale.com" />

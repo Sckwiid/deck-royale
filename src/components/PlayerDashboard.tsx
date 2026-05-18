@@ -364,7 +364,14 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
       {(payload?.deckChanges?.length ?? 0) === 0 ? (
         <div className="mt-4">
-          <EmptyState title={dict.common.noData} description={dict.dashboard.emptyDeckHistory} />
+          <EmptyState
+            title={dict.common.noData}
+            description={
+              locale === "fr"
+                ? `${dict.dashboard.emptyDeckHistory} Le suivi enregistre un changement uniquement si le deck courant diffère entre deux scans.`
+                : `${dict.dashboard.emptyDeckHistory} A change is recorded only when your current deck differs between two scans.`
+            }
+          />
         </div>
       ) : (
         <div className="mt-4 space-y-3">
@@ -452,12 +459,14 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
               {payload.player.name}
             </h1>
             <p className="mt-1 text-sm text-slate-300">{payload.player.tag}</p>
-            <a
-              href={`${normalizeBasePath()}/${locale}/pro-tracking/`}
-              className="mt-3 inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-violet-200/35 bg-violet-300/10 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-200/15"
-            >
-              {dict.dashboard.unlockTracking}
-            </a>
+            {!payload.advancedTrackingEnabled ? (
+              <a
+                href={`${normalizeBasePath()}/${locale}/pro-tracking/`}
+                className="mt-3 inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-violet-200/35 bg-violet-300/10 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-200/15"
+              >
+                {dict.dashboard.unlockTracking}
+              </a>
+            ) : null}
 
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">

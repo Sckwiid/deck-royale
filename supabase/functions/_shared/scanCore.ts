@@ -112,6 +112,11 @@ const SCAN_INTERVAL_BY_PRIORITY: Record<string, number | null> = {
   paused: null
 };
 
+const TROPHY_COMPETITIVE_MODES = new Set(["Ladder", "Ranked1v1", "PathOfLegend"]);
+
+const isTrophyCompetitiveMode = (mode: string | null | undefined) =>
+  typeof mode === "string" && TROPHY_COMPETITIVE_MODES.has(mode);
+
 const toPriorityScanInterval = (priority: string | null | undefined) => {
   if (!priority) {
     return SCAN_INTERVAL_BY_PRIORITY.normal;
@@ -203,13 +208,16 @@ const fetchRecommendedDecksForRange = async (
     .eq("trophy_max", bucket.max)
     .order("winrate", { ascending: false, nullsFirst: false })
     .order("games", { ascending: false })
-    .limit(12);
+    .limit(200);
 
   if (statsError || !statsRows || statsRows.length === 0) {
     return [];
   }
 
-  const deckKeys = [...new Set(statsRows.map((row) => row.deck_key as string))];
+  const competitiveRows = statsRows.filter((row) => isTrophyCompetitiveMode(row.mode as string | null));
+  const pickedRows = (competitiveRows.length > 0 ? competitiveRows : statsRows).slice(0, 12);
+
+  const deckKeys = [...new Set(pickedRows.map((row) => row.deck_key as string))];
   const { data: deckRows } = await supabaseAdmin
     .from("decks")
     .select("deck_key, card_ids, avg_elixir")
@@ -223,7 +231,7 @@ const fetchRecommendedDecksForRange = async (
     });
   }
 
-  return statsRows.map((row) => {
+  return pickedRows.map((row) => {
     const deck = deckMap.get(row.deck_key as string);
     return {
       deckKey: row.deck_key as string,
@@ -267,17 +275,20 @@ const fetchTrophyMapRanges = async (
     return [];
   }
 
-  const topByBucket = new Map<string, (typeof rows)[number]>();
+  const byBucket = new Map<string, Array<(typeof rows)[number]>>();
   for (const row of rows) {
     const key = `${row.trophy_min}:${row.trophy_max}`;
-    if (!topByBucket.has(key)) {
-      topByBucket.set(key, row);
-    }
+    const list = byBucket.get(key) ?? [];
+    list.push(row);
+    byBucket.set(key, list);
   }
 
-  const pickedRows = [...topByBucket.values()].sort(
-    (a, b) => Number(a.trophy_min) - Number(b.trophy_min)
-  );
+  const pickedRows = [...byBucket.entries()]
+    .map(([, bucketRows]) => {
+      const competitive = bucketRows.find((row) => isTrophyCompetitiveMode(row.mode as string | null));
+      return competitive ?? bucketRows[0];
+    })
+    .sort((a, b) => Number(a.trophy_min) - Number(b.trophy_min));
 
   const deckKeys = [...new Set(pickedRows.map((row) => row.deck_key as string))];
   const { data: deckRows } = await supabaseAdmin
