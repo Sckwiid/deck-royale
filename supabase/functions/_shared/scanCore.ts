@@ -634,7 +634,17 @@ export const ingestPlayerData = async (
 
   const sourceTag = formatPlayerTag(normalizedTag);
   const [profile, battleLog] = await Promise.all([getPlayer(sourceTag), getPlayerBattlelog(sourceTag)]);
-  const currentDeckKey = await ensureDeckExists(profile.currentDeck ?? [], options.supabaseAdmin);
+
+  let currentDeckKey: string | null = null;
+  try {
+    currentDeckKey = await ensureDeckExists(profile.currentDeck ?? [], options.supabaseAdmin);
+  } catch (error) {
+    console.warn(
+      `ensureDeckExists failed for current deck of ${sourceTag}; continuing with null current_deck_key`,
+      error
+    );
+    currentDeckKey = null;
+  }
 
   const existingPlayer = await getExistingPlayer(options.supabaseAdmin, sourceTag);
   const trackingPriority = (existingPlayer?.tracking_priority as string | null) ?? "normal";

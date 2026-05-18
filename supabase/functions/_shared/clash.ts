@@ -81,6 +81,28 @@ export class ClashApiError extends Error {
   }
 }
 
+const extractClashStatus = (error: unknown): number | null => {
+  if (error instanceof ClashApiError) {
+    return error.status;
+  }
+
+  if (typeof error === "object" && error !== null && "status" in error) {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === "number" && Number.isFinite(status)) {
+      return status;
+    }
+  }
+
+  if (error instanceof Error) {
+    const match = error.message.match(/Clash API error (\d{3})/i);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+
+  return null;
+};
+
 const decodeTagInput = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -167,11 +189,12 @@ export const localizeClashApiError = (
   error: unknown,
   lang: "fr" | "en"
 ): { status: number; message: string; code: string } | null => {
-  if (!(error instanceof ClashApiError)) {
+  const status = extractClashStatus(error);
+  if (status === null) {
     return null;
   }
 
-  if (error.status === 403) {
+  if (status === 403) {
     return {
       status: 403,
       code: "CLASH_AUTH_OR_IP",
@@ -182,7 +205,7 @@ export const localizeClashApiError = (
     };
   }
 
-  if (error.status === 404) {
+  if (status === 404) {
     return {
       status: 404,
       code: "PLAYER_NOT_FOUND",
@@ -193,7 +216,7 @@ export const localizeClashApiError = (
     };
   }
 
-  if (error.status === 429) {
+  if (status === 429) {
     return {
       status: 429,
       code: "CLASH_RATE_LIMIT",
@@ -204,9 +227,9 @@ export const localizeClashApiError = (
     };
   }
 
-  if (error.status === 502 || error.status === 503) {
+  if (status === 502 || status === 503) {
     return {
-      status: error.status,
+      status,
       code: "CLASH_PROXY_UNAVAILABLE",
       message:
         lang === "fr"

@@ -147,5 +147,20 @@ export const ensureDeckExists = async (
   }
 
   await upsertDeckRecords(supabaseAdmin, [deck]);
+
+  const { data, error } = await supabaseAdmin
+    .from("decks")
+    .select("deck_key")
+    .eq("deck_key", deck.deckKey)
+    .limit(1);
+
+  if (error) {
+    throw new Error(`Could not verify deck ${deck.deckKey}: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
   return deck.deckKey;
 };
