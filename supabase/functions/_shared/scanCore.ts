@@ -10,6 +10,7 @@ import {
 } from "./clash.ts";
 import { ensureDeckExists, type DeckRecord, upsertDeckRecords } from "./decks.ts";
 import { normalizeBattle, type NormalizedBattleRow } from "./battles.ts";
+import { hasAdvancedTrackingAccess } from "./proAccess.ts";
 
 export type ScanContext = "analyze" | "scan";
 
@@ -88,6 +89,7 @@ export interface AnalyzeFrontendPayload {
     trophiesWhenChanged: number | null;
     mode: string | null;
   }>;
+  advancedTrackingEnabled: boolean;
   newBattlesCount: number;
   statsUpdatedAt: string;
 }
@@ -311,7 +313,8 @@ const buildPlayerUpsertPayload = (
   profile: ClashPlayerProfile,
   currentDeckKey: string | null,
   context: ScanContext,
-  trackingPriority: string
+  trackingPriority: string,
+  advancedTrackingEnabled: boolean
 ) => {
   const now = new Date();
   const nowIso = toIso(now);
@@ -328,6 +331,7 @@ const buildPlayerUpsertPayload = (
     current_deck_key: currentDeckKey,
     scan_interval_minutes: scanInterval ?? 480,
     scan_error_count: 0,
+    ...(advancedTrackingEnabled ? { is_pro_requested: true } : {}),
     ...(context === "scan" || context === "analyze"
       ? {
           last_scan_at: nowIso,
@@ -393,9 +397,16 @@ const upsertSourcePlayer = async (
   profile: ClashPlayerProfile,
   currentDeckKey: string | null,
   context: ScanContext,
-  trackingPriority: string
+  trackingPriority: string,
+  advancedTrackingEnabled: boolean
 ) => {
-  const payload = buildPlayerUpsertPayload(profile, currentDeckKey, context, trackingPriority);
+  const payload = buildPlayerUpsertPayload(
+    profile,
+    currentDeckKey,
+    context,
+    trackingPriority,
+    advancedTrackingEnabled
+  );
 
   const { error } = await supabaseAdmin.from("players").upsert(payload, { onConflict: "tag" });
   if (error) {
@@ -633,6 +644,7 @@ export const ingestPlayerData = async (
   }
 
   const sourceTag = formatPlayerTag(normalizedTag);
+  const advancedTrackingEnabled = hasAdvancedTrackingAccess(sourceTag);
   const [profile, battleLog] = await Promise.all([getPlayer(sourceTag), getPlayerBattlelog(sourceTag)]);
 
   let currentDeckKey: string | null = null;
@@ -647,7 +659,8 @@ export const ingestPlayerData = async (
   }
 
   const existingPlayer = await getExistingPlayer(options.supabaseAdmin, sourceTag);
-  const trackingPriority = (existingPlayer?.tracking_priority as string | null) ?? "normal";
+  const baseTrackingPriority = (existingPlayer?.tracking_priority as string | null) ?? "normal";
+  const trackingPriority = advancedTrackingEnabled ? "pro" : baseTrackingPriority;
 
   const normalizedBattles = await collectBattleRows(
     battleLog,
@@ -672,7 +685,8 @@ export const ingestPlayerData = async (
     profile,
     currentDeckKey,
     options.context,
-    trackingPriority
+    trackingPriority,
+    advancedTrackingEnabled
   );
 
   await upsertPlayerSnapshot(options.supabaseAdmin, sourceTag, profile, currentDeckKey);
@@ -742,6 +756,7 @@ export const ingestPlayerData = async (
     },
     directOpponents: normalizedBattles.opponents,
     deckChanges,
+    advancedTrackingEnabled,
     newBattlesCount: battleInsertResult.newBattlesCount,
     statsUpdatedAt
   };

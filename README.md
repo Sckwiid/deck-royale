@@ -117,6 +117,7 @@ supabase secrets set PROJECT_URL=https://YOUR_PROJECT.supabase.co
 supabase secrets set SERVICE_ROLE_KEY=xxx
 supabase secrets set CRON_SECRET=xxx
 supabase secrets set ALLOWED_ORIGINS=https://YOUR_GITHUB_USERNAME.github.io
+supabase secrets set PRO_TRACKING_ALLOWLIST_TAGS="#GUUR8QP0,#ABC123,#P2LQ8V"
 ```
 
 5. Deploy functions:
@@ -192,6 +193,7 @@ Notes:
   - `429`: Clash API rate limit
   - `502/503`: RoyaleAPI proxy temporarily unavailable
 - Returns frontend payload: `player`, `recentDecks`, `recommendedDecksForCurrentRange`, `trophyMap` (with `ranges`), `directOpponents`, `deckChanges`, `newBattlesCount`, `statsUpdatedAt`.
+- If the player tag is present in `PRO_TRACKING_ALLOWLIST_TAGS`, tracking is forced to `pro` priority and the payload includes `advancedTrackingEnabled: true`.
 
 ### `scan-player`
 
@@ -293,6 +295,7 @@ These values must be configured in Supabase Function secrets:
 - `SERVICE_ROLE_KEY`
 - `CRON_SECRET`
 - `ALLOWED_ORIGINS`
+- `PRO_TRACKING_ALLOWLIST_TAGS` (comma/space/newline separated tags, e.g. `#GUUR8QP0,#ABC123`)
 
 ### Security rules
 

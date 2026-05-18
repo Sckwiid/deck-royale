@@ -84,6 +84,7 @@ export interface AnalyzePlayerResponse {
     trophiesWhenChanged: number | null;
     mode: string | null;
   }>;
+  advancedTrackingEnabled?: boolean;
   newBattlesCount: number;
   statsUpdatedAt: string;
 }

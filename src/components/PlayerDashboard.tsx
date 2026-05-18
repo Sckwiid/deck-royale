@@ -8,6 +8,7 @@ import ResponsiveTabs from "@/components/ResponsiveTabs";
 import TrophyRangePill from "@/components/TrophyRangePill";
 import WinrateBadge from "@/components/WinrateBadge";
 import { FunctionApiError, analyzePlayer } from "@/lib/api";
+import { fetchCardsLookup, type PublicCardMeta } from "@/lib/cards";
 import { getDictionary } from "@/lib/i18n";
 import type { AnalyzePlayerResponse, Locale } from "@/types";
 
@@ -31,6 +32,9 @@ const normalizeBasePath = () => {
   if (!basePath || basePath === "/") return "";
   return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
 };
+
+const buildPlayerUrl = (locale: Locale, tag: string) =>
+  `${normalizeBasePath()}/${locale}/player/?tag=${encodeURIComponent(tag)}`;
 
 const computeWinrate = (wins: number, losses: number, draws: number) => {
   const games = wins + losses + draws;
@@ -87,6 +91,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState<AnalyzePlayerResponse | null>(null);
+  const [cardLookup, setCardLookup] = useState<Map<number, PublicCardMeta>>(new Map());
   const [mobileTab, setMobileTab] = useState<DashboardTab>("decks");
 
   useEffect(() => {
@@ -124,6 +129,26 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     if (!resolvedTag) return;
     loadPlayer(resolvedTag);
   }, [resolvedTag, locale]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchCardsLookup(locale)
+      .then((lookup) => {
+        if (!cancelled) {
+          setCardLookup(lookup);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCardLookup(new Map());
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
   const rangeLabel = buildBucketLabel(payload?.trophyMap.bucketMin ?? null, payload?.trophyMap.bucketMax ?? null);
@@ -182,7 +207,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             {comparisonRows.map((row) => (
               <article key={row.deckKey} className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <DeckMini cardIds={row.cardIds} />
+                  <DeckMini cardIds={row.cardIds} cardLookup={cardLookup} />
                   <div className="text-right">
                     <WinrateBadge value={row.yourWinrate} />
                     <p className="mt-1 text-xs text-slate-300">
@@ -217,7 +242,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   key={row.deckKey}
                   className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_0.8fr] items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3"
                 >
-                  <DeckMini cardIds={row.cardIds} />
+                  <DeckMini cardIds={row.cardIds} cardLookup={cardLookup} />
                   <WinrateBadge value={row.yourWinrate} />
                   <WinrateBadge value={row.averageWinrate} />
                   <p className="text-sm text-slate-200">
@@ -263,7 +288,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <WinrateBadge value={lane.winrate} />
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <DeckMini cardIds={lane.cardIds} />
+                  <DeckMini cardIds={lane.cardIds} cardLookup={cardLookup} />
                   <GamesCount count={lane.games} label={dict.dashboard.basedOnGames} />
                 </div>
               </article>
@@ -280,10 +305,11 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
       {(payload?.directOpponents?.length ?? 0) > 0 ? (
         <div className="mt-4 space-y-2">
-          {(payload?.directOpponents ?? []).slice(0, 10).map((opponent) => (
-            <article
+          {(payload?.directOpponents ?? []).map((opponent) => (
+            <a
               key={opponent.tag}
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3"
+              href={buildPlayerUrl(locale, opponent.tag)}
+              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3 transition hover:border-cyan-300/35 hover:bg-cyan-300/10"
             >
               <div>
                 <p className="text-sm font-semibold text-white">{opponent.name || opponent.tag}</p>
@@ -295,7 +321,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   {formatDateTime(opponent.latestBattleAt, locale)}
                 </p>
               </div>
-            </article>
+            </a>
           ))}
         </div>
       ) : (
@@ -304,18 +330,31 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
         </div>
       )}
 
-      <article className="mt-4 rounded-xl border border-dashed border-violet-300/40 bg-violet-300/10 p-4">
-        <h3 className="font-display text-lg font-semibold text-violet-100">
-          {dict.dashboard.directOpponentsLocked}
-        </h3>
-        <p className="mt-2 text-sm text-violet-100/90">{dict.dashboard.directOpponentsLockedText}</p>
-        <a
-          href={`${normalizeBasePath()}/${locale}/pro-tracking/`}
-          className="mt-4 inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-violet-200/40 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-200/15"
-        >
-          {dict.dashboard.unlockTracking}
-        </a>
-      </article>
+      {payload?.advancedTrackingEnabled ? (
+        <article className="mt-4 rounded-xl border border-emerald-300/35 bg-emerald-300/10 p-4">
+          <h3 className="font-display text-lg font-semibold text-emerald-100">
+            {locale === "fr" ? "Tracking avancé actif" : "Advanced tracking active"}
+          </h3>
+          <p className="mt-2 text-sm text-emerald-100/90">
+            {locale === "fr"
+              ? "Ton tag est autorisé via la liste sécurisée backend."
+              : "Your tag is enabled through the backend secured allowlist."}
+          </p>
+        </article>
+      ) : (
+        <article className="mt-4 rounded-xl border border-dashed border-violet-300/40 bg-violet-300/10 p-4">
+          <h3 className="font-display text-lg font-semibold text-violet-100">
+            {dict.dashboard.directOpponentsLocked}
+          </h3>
+          <p className="mt-2 text-sm text-violet-100/90">{dict.dashboard.directOpponentsLockedText}</p>
+          <a
+            href={`${normalizeBasePath()}/${locale}/pro-tracking/`}
+            className="mt-4 inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-violet-200/40 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-200/15"
+          >
+            {dict.dashboard.unlockTracking}
+          </a>
+        </article>
+      )}
     </section>
   );
 
@@ -348,7 +387,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   </p>
                   {change.oldDeckKey && (deckCardsByKey.get(change.oldDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={deckCardsByKey.get(change.oldDeckKey) ?? []} />
+                      <DeckMini cardIds={deckCardsByKey.get(change.oldDeckKey) ?? []} cardLookup={cardLookup} />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">{deckKeyShort(change.oldDeckKey)}</p>
@@ -361,7 +400,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   </p>
                   {(deckCardsByKey.get(change.newDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={deckCardsByKey.get(change.newDeckKey) ?? []} />
+                      <DeckMini cardIds={deckCardsByKey.get(change.newDeckKey) ?? []} cardLookup={cardLookup} />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">{deckKeyShort(change.newDeckKey)}</p>
@@ -463,7 +502,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <WinrateBadge value={recommendedDeck.winrate} />
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <DeckMini cardIds={recommendedDeck.cardIds} />
+                  <DeckMini cardIds={recommendedDeck.cardIds} cardLookup={cardLookup} />
                   <GamesCount count={recommendedDeck.games} label={dict.dashboard.basedOnGames} />
                 </div>
               </div>
