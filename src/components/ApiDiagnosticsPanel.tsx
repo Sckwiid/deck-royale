@@ -127,6 +127,7 @@ export default function ApiDiagnosticsPanel({ locale }: ApiDiagnosticsPanelProps
   const [tagInput, setTagInput] = useState("");
   const [runningKey, setRunningKey] = useState<string | null>(null);
   const [entries, setEntries] = useState<DiagnosticEntry[]>([]);
+  const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "error">("idle");
   const specs = useMemo(() => buildSpecs(locale), [locale]);
 
   const normalizedTag = useMemo(() => normalizeTagInput(tagInput), [tagInput]);
@@ -162,6 +163,12 @@ export default function ApiDiagnosticsPanel({ locale }: ApiDiagnosticsPanelProps
         ? "Si le tag est vide, les tests utilisent #2PP."
         : "If tag is empty, tests use #2PP.",
     clear: locale === "fr" ? "Effacer les résultats" : "Clear results",
+    copyAll: locale === "fr" ? "Tout copier" : "Copy all",
+    copied: locale === "fr" ? "Copié dans le presse-papiers." : "Copied to clipboard.",
+    copyFailed:
+      locale === "fr"
+        ? "Impossible de copier automatiquement. Copie manuelle nécessaire."
+        : "Could not copy automatically. Manual copy required.",
     runAll: locale === "fr" ? "Lancer tous les tests" : "Run all tests",
     running: locale === "fr" ? "Test en cours..." : "Running test...",
     none: locale === "fr" ? "Aucun résultat pour le moment." : "No results yet.",
@@ -237,6 +244,37 @@ export default function ApiDiagnosticsPanel({ locale }: ApiDiagnosticsPanelProps
     }
   };
 
+  const buildCopyReport = () => {
+    return JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        locale,
+        normalizedTag: defaultTag,
+        functionsBaseUrl: functionsBaseInfo.baseUrl,
+        entries
+      },
+      null,
+      2
+    );
+  };
+
+  const copyAllEntries = async () => {
+    const report = buildCopyReport();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      await navigator.clipboard.writeText(report);
+
+      setCopyFeedback("ok");
+      window.setTimeout(() => setCopyFeedback("idle"), 2000);
+    } catch {
+      setCopyFeedback("error");
+      window.setTimeout(() => setCopyFeedback("idle"), 3000);
+    }
+  };
+
   return (
     <section className="section-wrap mt-8 pb-16 sm:pb-20">
       <article className="glass-panel p-5">
@@ -300,7 +338,15 @@ export default function ApiDiagnosticsPanel({ locale }: ApiDiagnosticsPanelProps
           ))}
         </div>
 
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={copyAllEntries}
+            disabled={entries.length === 0}
+            className="h-11 min-w-[44px] rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {labels.copyAll}
+          </button>
           <button
             type="button"
             onClick={() => setEntries([])}
@@ -308,6 +354,12 @@ export default function ApiDiagnosticsPanel({ locale }: ApiDiagnosticsPanelProps
           >
             {labels.clear}
           </button>
+          {copyFeedback === "ok" ? (
+            <p className="text-xs text-emerald-200">{labels.copied}</p>
+          ) : null}
+          {copyFeedback === "error" ? (
+            <p className="text-xs text-amber-200">{labels.copyFailed}</p>
+          ) : null}
         </div>
 
         <div className="mt-5 space-y-3">
