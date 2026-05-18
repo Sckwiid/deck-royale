@@ -79,12 +79,40 @@ export interface AnalyzePlayerResponse {
       cardIds: number[];
       mode: string;
     }>;
+    playerRanges?: Array<{
+      trophyMin: number;
+      trophyMax: number;
+      deckKey: string;
+      winrate: number | null;
+      games: number;
+      avgElixir: number | null;
+      cardIds: number[];
+      mode: string;
+    }>;
+    opponentRanges?: Array<{
+      trophyMin: number;
+      trophyMax: number;
+      deckKey: string;
+      winrate: number | null;
+      games: number;
+      avgElixir: number | null;
+      cardIds: number[];
+      mode: string;
+    }>;
   };
   directOpponents?: Array<{
     tag: string;
     name: string | null;
     battles: number;
     latestBattleAt: string | null;
+    wins: number;
+    losses: number;
+    draws: number;
+    latestResult: "win" | "loss" | "draw" | null;
+    latestPlayerDeckKey: string | null;
+    latestOpponentDeckKey: string | null;
+    latestPlayerDeckCardIds: number[];
+    latestOpponentDeckCardIds: number[];
   }>;
   deckChanges?: Array<{
     id: number;

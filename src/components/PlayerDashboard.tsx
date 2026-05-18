@@ -18,6 +18,7 @@ interface PlayerDashboardProps {
 }
 
 type DashboardTab = "decks" | "opponents" | "changes";
+type TrophyMapMode = "player" | "opponent";
 
 const TAG_REGEX = /[^0289PYLQGRJCUV]/g;
 
@@ -65,6 +66,25 @@ const deckKeyShort = (deckKey: string | null | undefined) => {
   return `${deckKey.slice(0, 8)}…`;
 };
 
+const getResultLabel = (result: "win" | "loss" | "draw" | null, locale: Locale) => {
+  if (!result) return locale === "fr" ? "Résultat inconnu" : "Unknown result";
+  if (locale === "fr") {
+    if (result === "win") return "Victoire";
+    if (result === "loss") return "Défaite";
+    return "Égalité";
+  }
+  if (result === "win") return "Win";
+  if (result === "loss") return "Loss";
+  return "Draw";
+};
+
+const getResultClass = (result: "win" | "loss" | "draw" | null) => {
+  if (result === "win") return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100";
+  if (result === "loss") return "border-rose-300/40 bg-rose-300/10 text-rose-100";
+  if (result === "draw") return "border-amber-300/40 bg-amber-300/10 text-amber-100";
+  return "border-white/20 bg-white/5 text-slate-200";
+};
+
 const formatLoadError = (error: unknown, locale: Locale) => {
   const fallback =
     locale === "fr"
@@ -93,6 +113,8 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   const [payload, setPayload] = useState<AnalyzePlayerResponse | null>(null);
   const [cardLookup, setCardLookup] = useState<Map<number, PublicCardMeta>>(new Map());
   const [mobileTab, setMobileTab] = useState<DashboardTab>("decks");
+  const [opponentsVisibleCount, setOpponentsVisibleCount] = useState(15);
+  const [trophyMapMode, setTrophyMapMode] = useState<TrophyMapMode>("player");
 
   useEffect(() => {
     const queryTag = new URLSearchParams(window.location.search).get("tag") ?? "";
@@ -150,6 +172,11 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     };
   }, [locale]);
 
+  useEffect(() => {
+    setOpponentsVisibleCount(15);
+    setTrophyMapMode("player");
+  }, [payload?.player.tag]);
+
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
   const worstMatchupDeck = payload?.worstMatchupDeck ?? null;
   const rangeLabel = buildBucketLabel(payload?.trophyMap.bucketMin ?? null, payload?.trophyMap.bucketMax ?? null);
@@ -165,6 +192,20 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     }
     for (const lane of payload?.trophyMap.ranges ?? []) {
       map.set(lane.deckKey, lane.cardIds ?? []);
+    }
+    for (const lane of payload?.trophyMap.playerRanges ?? []) {
+      map.set(lane.deckKey, lane.cardIds ?? []);
+    }
+    for (const lane of payload?.trophyMap.opponentRanges ?? []) {
+      map.set(lane.deckKey, lane.cardIds ?? []);
+    }
+    for (const opponent of payload?.directOpponents ?? []) {
+      if (opponent.latestPlayerDeckKey && opponent.latestPlayerDeckCardIds?.length === 8) {
+        map.set(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds);
+      }
+      if (opponent.latestOpponentDeckKey && opponent.latestOpponentDeckCardIds?.length === 8) {
+        map.set(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds);
+      }
     }
 
     return map;
@@ -261,17 +302,53 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     </section>
   );
 
+  const selectedTrophyRanges =
+    trophyMapMode === "player"
+      ? payload?.trophyMap.playerRanges ?? payload?.trophyMap.ranges ?? []
+      : payload?.trophyMap.opponentRanges ?? [];
+
   const renderTrophyMap = () => (
     <section className="glass-panel p-4 sm:p-5">
       <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.trophyMap}</h2>
+      <div className="mt-3 inline-flex rounded-xl border border-white/15 bg-white/5 p-1">
+        <button
+          type="button"
+          onClick={() => setTrophyMapMode("player")}
+          className={`h-11 min-w-[44px] rounded-lg px-3 text-sm font-semibold transition ${
+            trophyMapMode === "player"
+              ? "bg-cyan-300/20 text-cyan-100"
+              : "text-slate-300 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          {locale === "fr" ? "Mes decks" : "My decks"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTrophyMapMode("opponent")}
+          className={`h-11 min-w-[44px] rounded-lg px-3 text-sm font-semibold transition ${
+            trophyMapMode === "opponent"
+              ? "bg-violet-300/20 text-violet-100"
+              : "text-slate-300 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          {locale === "fr" ? "Decks adversaires" : "Opponent decks"}
+        </button>
+      </div>
 
-      {(payload?.trophyMap.ranges?.length ?? 0) === 0 ? (
+      {selectedTrophyRanges.length === 0 ? (
         <div className="mt-4">
-          <EmptyState title={dict.common.noData} description={dict.dashboard.noRecommendedDeck} />
+          <EmptyState
+            title={dict.common.noData}
+            description={
+              locale === "fr"
+                ? "Pas encore assez de games dans cette range. Les stats s'affinent automatiquement."
+                : "Not enough games in this range yet. Stats refine automatically."
+            }
+          />
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {(payload?.trophyMap.ranges ?? []).map((lane) => {
+          {selectedTrophyRanges.map((lane) => {
             const active =
               typeof payload?.trophyMap.currentTrophies === "number" &&
               payload.trophyMap.currentTrophies >= lane.trophyMin &&
@@ -279,7 +356,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
             return (
               <article
-                key={`${lane.trophyMin}-${lane.deckKey}`}
+                key={`${trophyMapMode}-${lane.trophyMin}-${lane.deckKey}`}
                 className={`rounded-xl border p-3 ${
                   active ? "border-cyan-300/45 bg-cyan-300/12" : "border-white/20 bg-white/10"
                 }`}
@@ -297,33 +374,101 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
           })}
         </div>
       )}
+
+      {selectedTrophyRanges.some((lane) => lane.games < 3) ? (
+        <p className="mt-3 text-xs text-slate-300">
+          {locale === "fr"
+            ? "Certaines ranges restent en faible volume. Les stats se stabilisent avec les prochains scans."
+            : "Some ranges still have low sample volume. Stats stabilize as more scans are collected."}
+        </p>
+      ) : null}
     </section>
   );
+
+  const visibleOpponents = (payload?.directOpponents ?? []).slice(0, opponentsVisibleCount);
+  const hasMoreOpponents = (payload?.directOpponents?.length ?? 0) > visibleOpponents.length;
 
   const renderDirectOpponents = () => (
     <section className="glass-panel p-4 sm:p-5">
       <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.directOpponents}</h2>
 
       {(payload?.directOpponents?.length ?? 0) > 0 ? (
-        <div className="mt-4 space-y-2">
-          {(payload?.directOpponents ?? []).map((opponent) => (
-            <a
+        <div className="mt-4 space-y-3">
+          {visibleOpponents.map((opponent) => (
+            <article
               key={opponent.tag}
-              href={buildPlayerUrl(locale, opponent.tag)}
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3 transition hover:border-cyan-300/35 hover:bg-cyan-300/10"
+              className="rounded-xl border border-white/10 bg-white/5 p-3 transition hover:border-cyan-300/35 hover:bg-cyan-300/10"
             >
-              <div>
-                <p className="text-sm font-semibold text-white">{opponent.name || opponent.tag}</p>
-                <p className="text-xs text-slate-300">{opponent.tag}</p>
+              <div className="flex items-start justify-between gap-3">
+                <a href={buildPlayerUrl(locale, opponent.tag)} className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white hover:text-cyan-100">
+                    {opponent.name || opponent.tag}
+                  </p>
+                  <p className="text-xs text-slate-300">{opponent.tag}</p>
+                </a>
+                <span
+                  className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${getResultClass(
+                    opponent.latestResult
+                  )}`}
+                >
+                  {getResultLabel(opponent.latestResult, locale)}
+                </span>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-cyan-200">{opponent.battles}</p>
-                <p className="text-xs text-slate-300">
-                  {formatDateTime(opponent.latestBattleAt, locale)}
-                </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                <span>
+                  W/L/D: {opponent.wins}/{opponent.losses}/{opponent.draws}
+                </span>
+                <span>•</span>
+                <span>
+                  {locale === "fr" ? "Combats" : "Battles"}: {opponent.battles}
+                </span>
+                <span>•</span>
+                <span>{formatDateTime(opponent.latestBattleAt, locale)}</span>
               </div>
-            </a>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
+                    {locale === "fr" ? "Ton deck" : "Your deck"}
+                  </p>
+                  {opponent.latestPlayerDeckCardIds?.length === 8 ? (
+                    <div className="mt-2">
+                      <DeckMini cardIds={opponent.latestPlayerDeckCardIds} cardLookup={cardLookup} />
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-300">
+                      {deckKeyShort(opponent.latestPlayerDeckKey)}
+                    </p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
+                    {locale === "fr" ? "Deck adverse" : "Opponent deck"}
+                  </p>
+                  {opponent.latestOpponentDeckCardIds?.length === 8 ? (
+                    <div className="mt-2">
+                      <DeckMini cardIds={opponent.latestOpponentDeckCardIds} cardLookup={cardLookup} />
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-300">
+                      {deckKeyShort(opponent.latestOpponentDeckKey)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </article>
           ))}
+
+          {hasMoreOpponents ? (
+            <button
+              type="button"
+              onClick={() => setOpponentsVisibleCount((value) => value + 10)}
+              className="inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+            >
+              {locale === "fr" ? "Afficher 10 de plus" : "Show 10 more"}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="mt-4">

@@ -114,18 +114,36 @@ export const getMetaHubDescription = (locale: SeoLocale) =>
     ? "Accedez aux pages meta DeckRadar: Trophy Road par range de trophies, decks ranked et analyses orientees performance reelle."
     : "Access DeckRadar meta pages: Trophy Road by trophy range, ranked deck insights, and real-performance analysis.";
 
-export const buildTrophyRoadPath = (locale: SeoLocale, rangeSlug?: string) => {
-  if (!rangeSlug) {
-    return `/${locale}/meta/trophy-road/`;
+const resolveBasePathPrefix = () => {
+  const base = (import.meta.env.BASE_URL as string | undefined) ?? "/";
+  if (!base || base === "/") {
+    return "";
   }
-  return `/${locale}/meta/trophy-road/${rangeSlug}/`;
+  return base.endsWith("/") ? base.slice(0, -1) : base;
 };
 
-export const buildMetaPath = (locale: SeoLocale) => `/${locale}/meta/`;
-export const buildRankedPath = (locale: SeoLocale) => `/${locale}/meta/ranked/`;
+const withBasePath = (path: string) => {
+  const prefix = resolveBasePathPrefix();
+  if (!prefix) return path;
+  if (path === prefix || path.startsWith(`${prefix}/`)) {
+    return path;
+  }
+  return `${prefix}${path}`;
+};
+
+export const buildTrophyRoadPath = (locale: SeoLocale, rangeSlug?: string) => {
+  if (!rangeSlug) {
+    return withBasePath(`/${locale}/meta/trophy-road/`);
+  }
+  return withBasePath(`/${locale}/meta/trophy-road/${rangeSlug}/`);
+};
+
+export const buildHomePath = (locale: SeoLocale) => withBasePath(`/${locale}/`);
+export const buildMetaPath = (locale: SeoLocale) => withBasePath(`/${locale}/meta/`);
+export const buildRankedPath = (locale: SeoLocale) => withBasePath(`/${locale}/meta/ranked/`);
 export const buildAnalyzePath = (locale: SeoLocale) =>
-  locale === "fr" ? "/fr/analyser/" : "/en/analyze/";
-export const buildProTrackingPath = (locale: SeoLocale) => `/${locale}/pro-tracking/`;
+  withBasePath(locale === "fr" ? "/fr/analyser/" : "/en/analyze/");
+export const buildProTrackingPath = (locale: SeoLocale) => withBasePath(`/${locale}/pro-tracking/`);
 
 export const getRangeNeighbors = (slug: string) => {
   const index = TROPHY_ROAD_RANGES.findIndex((range) => range.slug === slug);
@@ -221,4 +239,3 @@ export const getRankedFaq = (locale: SeoLocale) => {
     }
   ];
 };
-

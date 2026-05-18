@@ -31,8 +31,18 @@ const withBasePath = (route: string) => {
   return `${basePathPrefix}${route}`;
 };
 
-const frAlt = path.startsWith("/fr/") ? path : path.replace("/en/", "/fr/");
-const enAlt = path.startsWith("/en/") ? path : path.replace("/fr/", "/en/");
+const stripBasePath = (value: string) => {
+  if (!basePathPrefix) return value;
+  return value.startsWith(basePathPrefix) ? value.slice(basePathPrefix.length) || "/" : value;
+};
+
+const pathWithoutBase = stripBasePath(path);
+const frAltPath = pathWithoutBase.startsWith("/fr/")
+  ? pathWithoutBase
+  : pathWithoutBase.replace(/^\/en\//, "/fr/");
+const enAltPath = pathWithoutBase.startsWith("/en/")
+  ? pathWithoutBase
+  : pathWithoutBase.replace(/^\/fr\//, "/en/");
 
 const websiteJsonLd = {
   "@context": "https://schema.org",
@@ -64,8 +74,8 @@ const organizationJsonLd = {
 <meta name="description" content={description} />
 <meta name="robots" content={robots} />
 <link rel="canonical" href={canonical} />
-<link rel="alternate" hreflang="fr" href={new URL(withBasePath(frAlt), Astro.site).toString()} />
-<link rel="alternate" hreflang="en" href={new URL(withBasePath(enAlt), Astro.site).toString()} />
+<link rel="alternate" hreflang="fr" href={new URL(withBasePath(frAltPath), Astro.site).toString()} />
+<link rel="alternate" hreflang="en" href={new URL(withBasePath(enAltPath), Astro.site).toString()} />
 <link rel="alternate" hreflang="x-default" href={new URL(withBasePath("/en/"), Astro.site).toString()} />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

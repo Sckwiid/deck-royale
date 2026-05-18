@@ -7,7 +7,11 @@ import { getDictionary } from "@/lib/i18n";
 import { loadRankedDecks } from "@/lib/metaDeckData";
 import {
   buildAnalyzePath,
+  buildHomePath,
+  buildMetaPath,
+  buildProTrackingPath,
   buildTrophyRoadPath,
+  buildRankedPath,
   getRankedFaq,
   getRankedHeading,
   getRankedMetaDescription,
@@ -27,9 +31,9 @@ const decks = await loadRankedDecks();
 const faqEntries = getRankedFaq(locale);
 
 const breadcrumbJsonLd = buildBreadcrumbJsonLd([
-  { name: "DeckRadar", item: new URL("/en/", Astro.site).toString() },
-  { name: "Meta", item: new URL("/en/meta/", Astro.site).toString() },
-  { name: "Ranked", item: new URL("/en/meta/ranked/", Astro.site).toString() }
+  { name: "DeckRadar", item: new URL(buildHomePath(locale), Astro.site).toString() },
+  { name: "Meta", item: new URL(buildMetaPath(locale), Astro.site).toString() },
+  { name: "Ranked", item: new URL(buildRankedPath(locale), Astro.site).toString() }
 ]);
 
 const faqJsonLd = buildFaqJsonLd(faqEntries);
@@ -41,9 +45,9 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
   <section class="section-wrap mt-8 space-y-5">
     <nav aria-label="Breadcrumb" class="text-xs text-slate-300">
       <ol class="flex flex-wrap items-center gap-2">
-        <li><a href="/en/" class="hover:text-white">DeckRadar</a></li>
+        <li><a href={buildHomePath(locale)} class="hover:text-white">DeckRadar</a></li>
         <li>/</li>
-        <li><a href="/en/meta/" class="hover:text-white">Meta</a></li>
+        <li><a href={buildMetaPath(locale)} class="hover:text-white">Meta</a></li>
         <li>/</li>
         <li class="text-white">Ranked</li>
       </ol>
@@ -68,7 +72,7 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
       <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildAnalyzePath(locale)}>
         Analyze player
       </a>
-      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href="/en/pro-tracking/">
+      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildProTrackingPath(locale)}>
         Pro Tracking
       </a>
     </div>
@@ -91,4 +95,3 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
 
   <Footer dict={dict} />
 </MainLayout>
-

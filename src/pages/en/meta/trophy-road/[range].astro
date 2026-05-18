@@ -8,6 +8,9 @@ import { loadTrophyRangeDecks } from "@/lib/metaDeckData";
 import {
   TROPHY_ROAD_RANGES,
   buildAnalyzePath,
+  buildHomePath,
+  buildMetaPath,
+  buildProTrackingPath,
   buildRankedPath,
   buildTrophyRoadPath,
   getRangeFaq,
@@ -45,9 +48,9 @@ const decks = await loadTrophyRangeDecks(range);
 const neighbors = getRangeNeighbors(range.slug);
 
 const breadcrumbJsonLd = buildBreadcrumbJsonLd([
-  { name: "DeckRadar", item: new URL("/en/", Astro.site).toString() },
-  { name: "Meta", item: new URL("/en/meta/", Astro.site).toString() },
-  { name: "Trophy Road", item: new URL("/en/meta/trophy-road/", Astro.site).toString() },
+  { name: "DeckRadar", item: new URL(buildHomePath(locale), Astro.site).toString() },
+  { name: "Meta", item: new URL(buildMetaPath(locale), Astro.site).toString() },
+  { name: "Trophy Road", item: new URL(buildTrophyRoadPath(locale), Astro.site).toString() },
   {
     name: `${range.min}-${range.max}`,
     item: new URL(buildTrophyRoadPath(locale, range.slug), Astro.site).toString()
@@ -63,11 +66,11 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
   <section class="section-wrap mt-8 space-y-5">
     <nav aria-label="Breadcrumb" class="text-xs text-slate-300">
       <ol class="flex flex-wrap items-center gap-2">
-        <li><a href="/en/" class="hover:text-white">DeckRadar</a></li>
+        <li><a href={buildHomePath(locale)} class="hover:text-white">DeckRadar</a></li>
         <li>/</li>
-        <li><a href="/en/meta/" class="hover:text-white">Meta</a></li>
+        <li><a href={buildMetaPath(locale)} class="hover:text-white">Meta</a></li>
         <li>/</li>
-        <li><a href="/en/meta/trophy-road/" class="hover:text-white">Trophy Road</a></li>
+        <li><a href={buildTrophyRoadPath(locale)} class="hover:text-white">Trophy Road</a></li>
         <li>/</li>
         <li class="text-white">{range.min}-{range.max}</li>
       </ol>
@@ -112,7 +115,7 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
       <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildAnalyzePath(locale)}>
         Analyze player
       </a>
-      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href="/en/pro-tracking/">
+      <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildProTrackingPath(locale)}>
         Pro Tracking
       </a>
       <a class="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10" href={buildRankedPath(locale)}>
@@ -138,4 +141,3 @@ const faqJsonLd = buildFaqJsonLd(faqEntries);
 
   <Footer dict={dict} />
 </MainLayout>
-
