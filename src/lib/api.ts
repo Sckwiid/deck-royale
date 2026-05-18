@@ -1,14 +1,8 @@
-import { hasSupabasePublicCredentials, supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import type { AnalyzePlayerResponse } from "@/types";
 
 const ensureSupabaseClient = () => {
-  if (!supabase || !hasSupabasePublicCredentials) {
-    throw new Error(
-      "Supabase public env vars are missing. Configure PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY."
-    );
-  }
-
-  return supabase;
+  return getSupabaseClient();
 };
 
 interface AnalyzePlayerInput {
