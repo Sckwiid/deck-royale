@@ -151,6 +151,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   }, [locale]);
 
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
+  const worstMatchupDeck = payload?.worstMatchupDeck ?? null;
   const rangeLabel = buildBucketLabel(payload?.trophyMap.bucketMin ?? null, payload?.trophyMap.bucketMax ?? null);
 
   const deckCardsByKey = useMemo(() => {
@@ -280,7 +281,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
               <article
                 key={`${lane.trophyMin}-${lane.deckKey}`}
                 className={`rounded-xl border p-3 ${
-                  active ? "border-cyan-300/40 bg-cyan-300/10" : "border-white/10 bg-white/5"
+                  active ? "border-cyan-300/45 bg-cyan-300/12" : "border-white/20 bg-white/10"
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -504,22 +505,59 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.bestDeckNow}</h2>
             <p className="mt-1 text-sm text-slate-300">{dict.dashboard.bestDeckNowNote}</p>
 
-            {recommendedDeck ? (
-              <div className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <TrophyRangePill min={recommendedDeck.trophyMin} max={recommendedDeck.trophyMax} active />
-                  <WinrateBadge value={recommendedDeck.winrate} />
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <DeckMini cardIds={recommendedDeck.cardIds} cardLookup={cardLookup} />
-                  <GamesCount count={recommendedDeck.games} label={dict.dashboard.basedOnGames} />
-                </div>
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-4">
+                <p className="text-xs uppercase tracking-[0.1em] text-cyan-100/90">
+                  {locale === "fr" ? "Meilleur deck de ta range actuelle" : "Best deck for your current range"}
+                </p>
+                {recommendedDeck ? (
+                  <>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <TrophyRangePill min={recommendedDeck.trophyMin} max={recommendedDeck.trophyMax} active />
+                      <WinrateBadge value={recommendedDeck.winrate} />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <DeckMini cardIds={recommendedDeck.cardIds} cardLookup={cardLookup} />
+                      <GamesCount count={recommendedDeck.games} label={dict.dashboard.basedOnGames} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-3">
+                    <EmptyState title={dict.common.noData} description={dict.dashboard.noRecommendedDeck} />
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="mt-4">
-                <EmptyState title={dict.common.noData} description={dict.dashboard.noRecommendedDeck} />
+
+              <div className="rounded-xl border border-rose-300/30 bg-rose-300/10 p-4">
+                <p className="text-xs uppercase tracking-[0.1em] text-rose-100/90">
+                  {locale === "fr" ? "Deck contre lequel tu perds le plus" : "Deck you lose to the most"}
+                </p>
+                {worstMatchupDeck ? (
+                  <>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex rounded-full border border-rose-200/40 bg-rose-200/10 px-3 py-1 text-sm font-semibold text-rose-100">
+                        {worstMatchupDeck.lossRate === null ? "N/A" : `${worstMatchupDeck.lossRate.toFixed(1)}%`}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <DeckMini cardIds={worstMatchupDeck.cardIds} cardLookup={cardLookup} />
+                      <GamesCount count={worstMatchupDeck.games} label={dict.dashboard.basedOnGames} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-3">
+                    <EmptyState
+                      title={dict.common.noData}
+                      description={
+                        locale === "fr"
+                          ? "Pas encore assez de combats contre un même deck pour établir ce classement."
+                          : "Not enough repeated matchups against one deck to rank this yet."
+                      }
+                    />
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <p className="mt-4 text-xs text-slate-300">
               {dict.dashboard.statsUpdatedAt} {formatDateTime(payload.statsUpdatedAt, locale)}

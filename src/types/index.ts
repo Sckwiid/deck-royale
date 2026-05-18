@@ -54,6 +54,16 @@ export interface AnalyzePlayerResponse {
     avgElixir: number | null;
     cardIds: number[];
   }>;
+  worstMatchupDeck?: {
+    deckKey: string;
+    games: number;
+    losses: number;
+    wins: number;
+    draws: number;
+    lossRate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+  } | null;
   trophyMap: {
     currentTrophies: number | null;
     bucketMin: number | null;

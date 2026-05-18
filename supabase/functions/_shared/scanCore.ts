@@ -59,6 +59,16 @@ export interface AnalyzeFrontendPayload {
     avgElixir: number | null;
     cardIds: number[];
   }>;
+  worstMatchupDeck: {
+    deckKey: string;
+    games: number;
+    losses: number;
+    wins: number;
+    draws: number;
+    lossRate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+  } | null;
   trophyMap: {
     currentTrophies: number | null;
     bucketMin: number | null;
@@ -113,6 +123,7 @@ const SCAN_INTERVAL_BY_PRIORITY: Record<string, number | null> = {
 };
 
 const TROPHY_COMPETITIVE_MODES = new Set(["Ladder", "Ranked1v1", "PathOfLegend"]);
+const MIN_GAMES_FOR_RECOMMENDED = 8;
 
 const isTrophyCompetitiveMode = (mode: string | null | undefined) =>
   typeof mode === "string" && TROPHY_COMPETITIVE_MODES.has(mode);
@@ -208,16 +219,60 @@ const fetchRecommendedDecksForRange = async (
     .eq("trophy_max", bucket.max)
     .order("winrate", { ascending: false, nullsFirst: false })
     .order("games", { ascending: false })
-    .limit(200);
+    .limit(500);
 
   if (statsError || !statsRows || statsRows.length === 0) {
     return [];
   }
 
   const competitiveRows = statsRows.filter((row) => isTrophyCompetitiveMode(row.mode as string | null));
-  const pickedRows = (competitiveRows.length > 0 ? competitiveRows : statsRows).slice(0, 12);
+  const baseRows = competitiveRows.length > 0 ? competitiveRows : statsRows;
 
-  const deckKeys = [...new Set(pickedRows.map((row) => row.deck_key as string))];
+  const aggregatedByDeck = new Map<
+    string,
+    {
+      deckKey: string;
+      wins: number;
+      losses: number;
+      draws: number;
+      games: number;
+      trophyMin: number;
+      trophyMax: number;
+    }
+  >();
+
+  for (const row of baseRows) {
+    const deckKey = row.deck_key as string;
+    const existing = aggregatedByDeck.get(deckKey) ?? {
+      deckKey,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      games: 0,
+      trophyMin: Number(row.trophy_min),
+      trophyMax: Number(row.trophy_max)
+    };
+
+    existing.wins += Number(row.wins);
+    existing.losses += Number(row.losses);
+    existing.draws += Number(row.draws);
+    existing.games += Number(row.games);
+    aggregatedByDeck.set(deckKey, existing);
+  }
+
+  const asArray = [...aggregatedByDeck.values()];
+  const confident = asArray.filter((row) => row.games >= MIN_GAMES_FOR_RECOMMENDED);
+  const pickedRows = (confident.length > 0 ? confident : asArray)
+    .sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      const aRate = a.games > 0 ? (a.wins / a.games) * 100 : 0;
+      const bRate = b.games > 0 ? (b.wins / b.games) * 100 : 0;
+      if (bRate !== aRate) return bRate - aRate;
+      return b.games - a.games;
+    })
+    .slice(0, 12);
+
+  const deckKeys = [...new Set(pickedRows.map((row) => row.deckKey))];
   const { data: deckRows } = await supabaseAdmin
     .from("decks")
     .select("deck_key, card_ids, avg_elixir")
@@ -232,17 +287,23 @@ const fetchRecommendedDecksForRange = async (
   }
 
   return pickedRows.map((row) => {
-    const deck = deckMap.get(row.deck_key as string);
+    const deck = deckMap.get(row.deckKey);
+    const games = Number(row.games);
+    const wins = Number(row.wins);
+    const losses = Number(row.losses);
+    const draws = Number(row.draws);
+    const winrate = games > 0 ? Number(((wins / games) * 100).toFixed(2)) : null;
+
     return {
-      deckKey: row.deck_key as string,
-      mode: (row.mode as string) ?? "unknown",
-      trophyMin: Number(row.trophy_min),
-      trophyMax: Number(row.trophy_max),
-      wins: Number(row.wins),
-      losses: Number(row.losses),
-      draws: Number(row.draws),
-      games: Number(row.games),
-      winrate: row.winrate !== null ? Number(row.winrate) : null,
+      deckKey: row.deckKey,
+      mode: "competitive",
+      trophyMin: row.trophyMin,
+      trophyMax: row.trophyMax,
+      wins,
+      losses,
+      draws,
+      games,
+      winrate,
       avgElixir: deck?.avgElixir ?? null,
       cardIds: deck?.cardIds ?? []
     };
@@ -288,7 +349,7 @@ const fetchTrophyMapRanges = async (
       const competitive = bucketRows.find((row) => isTrophyCompetitiveMode(row.mode as string | null));
       return competitive ?? bucketRows[0];
     })
-    .sort((a, b) => Number(a.trophy_min) - Number(b.trophy_min));
+    .sort((a, b) => Number(b.trophy_min) - Number(a.trophy_min));
 
   const deckKeys = [...new Set(pickedRows.map((row) => row.deck_key as string))];
   const { data: deckRows } = await supabaseAdmin
@@ -542,6 +603,81 @@ const fetchDeckChanges = async (
   }));
 };
 
+const fetchWorstMatchupDeck = async (
+  supabaseAdmin: SupabaseClient,
+  playerTag: string
+): Promise<AnalyzeFrontendPayload["worstMatchupDeck"]> => {
+  const { data: rows, error } = await supabaseAdmin
+    .from("battles")
+    .select("player_b_deck_key, player_a_result")
+    .eq("player_a_tag", playerTag)
+    .not("player_b_deck_key", "is", null)
+    .in("player_a_result", ["win", "loss", "draw"])
+    .limit(2000);
+
+  if (error || !rows || rows.length === 0) {
+    return null;
+  }
+
+  const stats = new Map<
+    string,
+    { deckKey: string; games: number; losses: number; wins: number; draws: number }
+  >();
+
+  for (const row of rows) {
+    const deckKey = row.player_b_deck_key as string | null;
+    if (!deckKey) continue;
+
+    const entry = stats.get(deckKey) ?? {
+      deckKey,
+      games: 0,
+      losses: 0,
+      wins: 0,
+      draws: 0
+    };
+
+    entry.games += 1;
+    if (row.player_a_result === "loss") entry.losses += 1;
+    if (row.player_a_result === "win") entry.wins += 1;
+    if (row.player_a_result === "draw") entry.draws += 1;
+    stats.set(deckKey, entry);
+  }
+
+  const ranked = [...stats.values()]
+    .filter((entry) => entry.games >= 3)
+    .sort((a, b) => {
+      if (b.losses !== a.losses) return b.losses - a.losses;
+      const aLossRate = a.games > 0 ? a.losses / a.games : 0;
+      const bLossRate = b.games > 0 ? b.losses / b.games : 0;
+      if (bLossRate !== aLossRate) return bLossRate - aLossRate;
+      return b.games - a.games;
+    });
+
+  const target = ranked[0];
+  if (!target) {
+    return null;
+  }
+
+  const { data: deckRows } = await supabaseAdmin
+    .from("decks")
+    .select("deck_key, card_ids, avg_elixir")
+    .eq("deck_key", target.deckKey)
+    .limit(1);
+
+  const deck = deckRows?.[0];
+
+  return {
+    deckKey: target.deckKey,
+    games: target.games,
+    losses: target.losses,
+    wins: target.wins,
+    draws: target.draws,
+    lossRate: target.games > 0 ? Number(((target.losses / target.games) * 100).toFixed(2)) : null,
+    avgElixir: deck?.avg_elixir !== null && deck?.avg_elixir !== undefined ? Number(deck.avg_elixir) : null,
+    cardIds: ((deck?.card_ids as number[] | undefined) ?? []).map((value) => Number(value))
+  };
+};
+
 const insertOnlyNewBattles = async (
   supabaseAdmin: SupabaseClient,
   rows: NormalizedBattleRow[]
@@ -734,6 +870,7 @@ export const ingestPlayerData = async (
   );
   const trophyMapRanges = await fetchTrophyMapRanges(options.supabaseAdmin, profile.trophies ?? null);
   const deckChanges = await fetchDeckChanges(options.supabaseAdmin, sourceTag);
+  const worstMatchupDeck = await fetchWorstMatchupDeck(options.supabaseAdmin, sourceTag);
 
   const bucket = bucket250(profile.trophies ?? null);
 
@@ -758,6 +895,7 @@ export const ingestPlayerData = async (
     },
     recentDecks: summariseRecentDecks(normalizedBattles.rows, deckLookup),
     recommendedDecksForCurrentRange,
+    worstMatchupDeck,
     trophyMap: {
       currentTrophies: profile.trophies ?? null,
       bucketMin: bucket.min,
