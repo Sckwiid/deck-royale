@@ -93,7 +93,7 @@ const normalizedBase =
       }
 
       const encodedTag = encodeURIComponent(`#${clean}`);
-      const destination = `${normalizedBase}/${locale}/player/${encodedTag}/`;
+      const destination = `${normalizedBase}/${locale}/player/?tag=${encodedTag}`;
 
       try {
         localStorage.setItem("deckradar.lastTag", clean);
