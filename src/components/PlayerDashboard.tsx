@@ -19,6 +19,23 @@ interface PlayerDashboardProps {
 
 type DashboardTab = "decks" | "opponents" | "changes";
 type TrophyMapMode = "player" | "opponent";
+type TrophyWindowKey = "6h" | "1d" | "7d" | "1m" | "3m" | "6m" | "1y" | "all";
+
+const TROPHY_WINDOWS: Array<{
+  key: TrophyWindowKey;
+  hours: number | null;
+  labelFr: string;
+  labelEn: string;
+}> = [
+  { key: "6h", hours: 6, labelFr: "6H", labelEn: "6H" },
+  { key: "1d", hours: 24, labelFr: "1J", labelEn: "1D" },
+  { key: "7d", hours: 24 * 7, labelFr: "7J", labelEn: "7D" },
+  { key: "1m", hours: 24 * 30, labelFr: "1M", labelEn: "1M" },
+  { key: "3m", hours: 24 * 90, labelFr: "3M", labelEn: "3M" },
+  { key: "6m", hours: 24 * 180, labelFr: "6M", labelEn: "6M" },
+  { key: "1y", hours: 24 * 365, labelFr: "1A", labelEn: "1Y" },
+  { key: "all", hours: null, labelFr: "ALL", labelEn: "ALL" }
+];
 
 const TAG_REGEX = /[^0289PYLQGRJCUV]/g;
 
@@ -140,6 +157,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   const [opponentsVisibleCount, setOpponentsVisibleCount] = useState(15);
   const [trophyMapMode, setTrophyMapMode] = useState<TrophyMapMode>("player");
   const [showTrophyGraph, setShowTrophyGraph] = useState(false);
+  const [trophyWindow, setTrophyWindow] = useState<TrophyWindowKey>("7d");
 
   useEffect(() => {
     const queryTag = new URLSearchParams(window.location.search).get("tag") ?? "";
@@ -201,16 +219,41 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     setOpponentsVisibleCount(15);
     setTrophyMapMode("player");
     setShowTrophyGraph(false);
+    setTrophyWindow("7d");
   }, [payload?.player.tag]);
 
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
   const worstMatchupDeck = payload?.worstMatchupDeck ?? null;
   const trophyHistory = payload?.trophyHistory ?? [];
+  const trackedSinceAt = payload?.trackedSinceAt ?? trophyHistory[0]?.collectedAt ?? null;
+  const filteredTrophyHistory = useMemo(() => {
+    const selected = TROPHY_WINDOWS.find((window) => window.key === trophyWindow);
+    if (!selected || selected.hours === null || trophyHistory.length === 0) {
+      return trophyHistory;
+    }
+
+    const latestMs = Date.parse(trophyHistory[trophyHistory.length - 1]?.collectedAt ?? "");
+    if (!Number.isFinite(latestMs)) {
+      return trophyHistory;
+    }
+
+    const minMs = latestMs - selected.hours * 60 * 60 * 1000;
+    const filtered = trophyHistory.filter((point) => {
+      const pointMs = Date.parse(point.collectedAt);
+      return Number.isFinite(pointMs) && pointMs >= minMs;
+    });
+
+    if (filtered.length >= 2) {
+      return filtered;
+    }
+    return trophyHistory.slice(-Math.min(10, trophyHistory.length));
+  }, [trophyHistory, trophyWindow]);
+
   const trophyChart = useMemo(() => {
     const width = 720;
     const height = 170;
-    return buildTrophyPathPoints(trophyHistory, width, height);
-  }, [trophyHistory]);
+    return buildTrophyPathPoints(filteredTrophyHistory, width, height);
+  }, [filteredTrophyHistory]);
 
   const deckCardsByKey = useMemo(() => {
     const map = new Map<string, number[]>();
@@ -713,20 +756,50 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                     {locale === "fr" ? "Évolution des trophées" : "Trophies progression"}
                   </p>
                   <p className="text-xs text-slate-300">
-                    {trophyHistory.length} {locale === "fr" ? "points" : "points"}
+                    {filteredTrophyHistory.length} {locale === "fr" ? "points" : "points"}
                   </p>
                 </div>
 
-                {trophyHistory.length >= 2 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {TROPHY_WINDOWS.map((window) => (
+                    <button
+                      key={window.key}
+                      type="button"
+                      onClick={() => setTrophyWindow(window.key)}
+                      className={`h-9 min-w-[44px] rounded-lg border px-3 text-xs font-semibold transition ${
+                        trophyWindow === window.key
+                          ? "border-cyan-300/50 bg-cyan-300/20 text-cyan-100"
+                          : "border-white/15 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {locale === "fr" ? window.labelFr : window.labelEn}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-3 text-xs text-slate-300">
+                  {locale === "fr"
+                    ? "Les données du graphe commencent à la première fois où ce tag a été scanné sur DeckRadar."
+                    : "Chart data starts from the first time this tag was scanned on DeckRadar."}
+                  {" "}
+                  {trackedSinceAt ? (
+                    <span>
+                      {locale === "fr" ? "Premier scan:" : "First scan:"}{" "}
+                      {formatDateTime(trackedSinceAt, locale)}
+                    </span>
+                  ) : null}
+                </p>
+
+                {filteredTrophyHistory.length >= 2 ? (
                   <div className="mt-3">
                     <svg viewBox="0 0 720 170" className="h-44 w-full" role="img" aria-label={locale === "fr" ? "Graphique de progression des trophées" : "Trophy progression chart"}>
                       <defs>
-                        <linearGradient id="trophy-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient id="trophy-area-gradient-main" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
                           <stop offset="100%" stopColor="rgba(56,189,248,0.02)" />
                         </linearGradient>
                       </defs>
-                      <path d={`M ${trophyChart.area}`} fill="url(#trophy-area-gradient)" />
+                      <path d={`M ${trophyChart.area}`} fill="url(#trophy-area-gradient-main)" />
                       <polyline
                         points={trophyChart.line}
                         fill="none"
@@ -737,11 +810,16 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       />
                     </svg>
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
-                      <span>{formatDateTime(trophyHistory[0]?.collectedAt, locale)}</span>
+                      <span>{formatDateTime(filteredTrophyHistory[0]?.collectedAt, locale)}</span>
                       <span>
                         {locale === "fr" ? "Min" : "Min"} {trophyChart.min} • {locale === "fr" ? "Max" : "Max"} {trophyChart.max}
                       </span>
-                      <span>{formatDateTime(trophyHistory[trophyHistory.length - 1]?.collectedAt, locale)}</span>
+                      <span>
+                        {formatDateTime(
+                          filteredTrophyHistory[filteredTrophyHistory.length - 1]?.collectedAt,
+                          locale
+                        )}
+                      </span>
                     </div>
                   </div>
                 ) : (

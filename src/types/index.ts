@@ -129,6 +129,7 @@ export interface AnalyzePlayerResponse {
     trophies: number;
     bestTrophies: number | null;
   }>;
+  trackedSinceAt?: string | null;
   advancedTrackingEnabled?: boolean;
   newBattlesCount: number;
   statsUpdatedAt: string;

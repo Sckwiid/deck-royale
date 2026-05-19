@@ -141,6 +141,7 @@ export interface AnalyzeFrontendPayload {
     trophies: number;
     bestTrophies: number | null;
   }>;
+  trackedSinceAt: string | null;
   advancedTrackingEnabled: boolean;
   newBattlesCount: number;
   statsUpdatedAt: string;
@@ -897,20 +898,23 @@ const syncDeckChangesFromSnapshots = async (
 const fetchTrophyHistory = async (
   supabaseAdmin: SupabaseClient,
   playerTag: string
-): Promise<AnalyzeFrontendPayload["trophyHistory"]> => {
+): Promise<{
+  points: AnalyzeFrontendPayload["trophyHistory"];
+  trackedSinceAt: string | null;
+}> => {
   const { data, error } = await supabaseAdmin
     .from("player_snapshots")
     .select("collected_at, trophies, best_trophies")
     .eq("player_tag", playerTag)
     .not("trophies", "is", null)
     .order("collected_at", { ascending: false })
-    .limit(60);
+    .limit(5000);
 
   if (error || !data || data.length === 0) {
-    return [];
+    return { points: [], trackedSinceAt: null };
   }
 
-  return [...data]
+  const points = [...data]
     .reverse()
     .map((row) => ({
       collectedAt: row.collected_at as string,
@@ -918,6 +922,11 @@ const fetchTrophyHistory = async (
       bestTrophies: row.best_trophies !== null ? Number(row.best_trophies) : null
     }))
     .filter((entry) => Number.isFinite(entry.trophies));
+
+  return {
+    points,
+    trackedSinceAt: points[0]?.collectedAt ?? null
+  };
 };
 
 const fetchWorstMatchupDeck = async (
@@ -1361,7 +1370,8 @@ export const ingestPlayerData = async (
     },
     directOpponents,
     deckChanges,
-    trophyHistory,
+    trophyHistory: trophyHistory.points,
+    trackedSinceAt: trophyHistory.trackedSinceAt,
     advancedTrackingEnabled,
     newBattlesCount: battleInsertResult.newBattlesCount,
     statsUpdatedAt
