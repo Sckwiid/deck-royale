@@ -121,6 +121,13 @@ export interface AnalyzePlayerResponse {
     changedAt: string;
     trophiesWhenChanged: number | null;
     mode: string | null;
+    oldDeckCardIds: number[];
+    newDeckCardIds: number[];
+  }>;
+  trophyHistory?: Array<{
+    collectedAt: string;
+    trophies: number;
+    bestTrophies: number | null;
   }>;
   advancedTrackingEnabled?: boolean;
   newBattlesCount: number;

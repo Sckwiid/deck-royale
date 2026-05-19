@@ -133,6 +133,13 @@ export interface AnalyzeFrontendPayload {
     changedAt: string;
     trophiesWhenChanged: number | null;
     mode: string | null;
+    oldDeckCardIds: number[];
+    newDeckCardIds: number[];
+  }>;
+  trophyHistory: Array<{
+    collectedAt: string;
+    trophies: number;
+    bestTrophies: number | null;
   }>;
   advancedTrackingEnabled: boolean;
   newBattlesCount: number;
@@ -752,8 +759,31 @@ const fetchDeckChanges = async (
     .order("changed_at", { ascending: false })
     .limit(12);
 
-  if (error || !data) {
+  if (error || !data || data.length === 0) {
     return [];
+  }
+
+  const deckKeys = [
+    ...new Set(
+      data
+        .flatMap((row) => [row.old_deck_key as string | null, row.new_deck_key as string | null])
+        .filter((value): value is string => Boolean(value))
+    )
+  ];
+
+  const { data: deckRows } = deckKeys.length
+    ? await supabaseAdmin
+        .from("decks")
+        .select("deck_key, card_ids")
+        .in("deck_key", deckKeys)
+    : { data: [] as Array<{ deck_key: string; card_ids: number[] }> };
+
+  const cardsByDeck = new Map<string, number[]>();
+  for (const row of deckRows ?? []) {
+    cardsByDeck.set(
+      row.deck_key as string,
+      ((row.card_ids as number[]) ?? []).map((value) => Number(value))
+    );
   }
 
   return data.map((row) => ({
@@ -763,8 +793,131 @@ const fetchDeckChanges = async (
     changedAt: row.changed_at as string,
     trophiesWhenChanged:
       row.trophies_when_changed !== null ? Number(row.trophies_when_changed) : null,
-    mode: (row.mode as string | null) ?? null
+    mode: (row.mode as string | null) ?? null,
+    oldDeckCardIds:
+      ((row.old_deck_key as string | null) && cardsByDeck.get(row.old_deck_key as string)) ?? [],
+    newDeckCardIds: cardsByDeck.get(row.new_deck_key as string) ?? []
   }));
+};
+
+const syncDeckChangesFromSnapshots = async (
+  supabaseAdmin: SupabaseClient,
+  playerTag: string
+) => {
+  const { data: snapshots, error: snapshotsError } = await supabaseAdmin
+    .from("player_snapshots")
+    .select("collected_at, trophies, current_deck_key")
+    .eq("player_tag", playerTag)
+    .not("current_deck_key", "is", null)
+    .order("collected_at", { ascending: true })
+    .limit(500);
+
+  if (snapshotsError || !snapshots || snapshots.length < 2) {
+    return;
+  }
+
+  const { data: existingChanges, error: changesError } = await supabaseAdmin
+    .from("deck_changes")
+    .select("old_deck_key, new_deck_key, changed_at")
+    .eq("player_tag", playerTag)
+    .order("changed_at", { ascending: false })
+    .limit(500);
+
+  if (changesError) {
+    throw new Error(`Could not read existing deck changes: ${changesError.message}`);
+  }
+
+  const existing = existingChanges ?? [];
+  const pending: Array<{
+    player_tag: string;
+    old_deck_key: string;
+    new_deck_key: string;
+    changed_at: string;
+    trophies_when_changed: number | null;
+    mode: string | null;
+  }> = [];
+
+  for (let i = 1; i < snapshots.length; i += 1) {
+    const prev = snapshots[i - 1];
+    const curr = snapshots[i];
+
+    const oldDeck = prev.current_deck_key as string | null;
+    const newDeck = curr.current_deck_key as string | null;
+    if (!oldDeck || !newDeck || oldDeck === newDeck) {
+      continue;
+    }
+
+    const changedAt = curr.collected_at as string;
+    const changedAtMs = Date.parse(changedAt);
+
+    const duplicateInDb = existing.some((row) => {
+      if ((row.old_deck_key as string | null) !== oldDeck) return false;
+      if ((row.new_deck_key as string | null) !== newDeck) return false;
+      const rowMs = Date.parse(row.changed_at as string);
+      if (!Number.isFinite(rowMs) || !Number.isFinite(changedAtMs)) return false;
+      return Math.abs(rowMs - changedAtMs) <= 5 * 60 * 1000;
+    });
+
+    if (duplicateInDb) {
+      continue;
+    }
+
+    const duplicatePending = pending.some((row) => {
+      if (row.old_deck_key !== oldDeck || row.new_deck_key !== newDeck) return false;
+      const rowMs = Date.parse(row.changed_at);
+      if (!Number.isFinite(rowMs) || !Number.isFinite(changedAtMs)) return false;
+      return Math.abs(rowMs - changedAtMs) <= 5 * 60 * 1000;
+    });
+
+    if (duplicatePending) {
+      continue;
+    }
+
+    pending.push({
+      player_tag: playerTag,
+      old_deck_key: oldDeck,
+      new_deck_key: newDeck,
+      changed_at: changedAt,
+      trophies_when_changed:
+        curr.trophies !== null && curr.trophies !== undefined ? Number(curr.trophies) : null,
+      mode: null
+    });
+  }
+
+  if (pending.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabaseAdmin.from("deck_changes").insert(pending);
+  if (insertError) {
+    throw new Error(`Could not sync deck changes from snapshots: ${insertError.message}`);
+  }
+};
+
+const fetchTrophyHistory = async (
+  supabaseAdmin: SupabaseClient,
+  playerTag: string
+): Promise<AnalyzeFrontendPayload["trophyHistory"]> => {
+  const { data, error } = await supabaseAdmin
+    .from("player_snapshots")
+    .select("collected_at, trophies, best_trophies")
+    .eq("player_tag", playerTag)
+    .not("trophies", "is", null)
+    .order("collected_at", { ascending: false })
+    .limit(60);
+
+  if (error || !data || data.length === 0) {
+    return [];
+  }
+
+  return [...data]
+    .reverse()
+    .map((row) => ({
+      collectedAt: row.collected_at as string,
+      trophies: Number(row.trophies),
+      bestTrophies: row.best_trophies !== null ? Number(row.best_trophies) : null
+    }))
+    .filter((entry) => Number.isFinite(entry.trophies));
 };
 
 const fetchWorstMatchupDeck = async (
@@ -1131,6 +1284,7 @@ export const ingestPlayerData = async (
   );
 
   await upsertPlayerSnapshot(options.supabaseAdmin, sourceTag, profile, currentDeckKey);
+  await syncDeckChangesFromSnapshots(options.supabaseAdmin, sourceTag);
 
   const battleInsertResult = await insertOnlyNewBattles(options.supabaseAdmin, normalizedBattles.rows);
 
@@ -1170,6 +1324,7 @@ export const ingestPlayerData = async (
   const deckChanges = await fetchDeckChanges(options.supabaseAdmin, sourceTag);
   const worstMatchupDeck = await fetchWorstMatchupDeck(options.supabaseAdmin, sourceTag);
   const directOpponents = await fetchDirectOpponentsDetailed(options.supabaseAdmin, sourceTag);
+  const trophyHistory = await fetchTrophyHistory(options.supabaseAdmin, sourceTag);
 
   const bucket = bucket250(profile.trophies ?? null);
 
@@ -1206,6 +1361,7 @@ export const ingestPlayerData = async (
     },
     directOpponents,
     deckChanges,
+    trophyHistory,
     advancedTrackingEnabled,
     newBattlesCount: battleInsertResult.newBattlesCount,
     statsUpdatedAt

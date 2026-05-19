@@ -54,13 +54,6 @@ const formatDateTime = (iso: string | null | undefined, locale: Locale) => {
   }).format(date);
 };
 
-const buildBucketLabel = (min: number | null, max: number | null) => {
-  if (min === null || max === null) {
-    return "N/A";
-  }
-  return `${min} - ${max}`;
-};
-
 const deckKeyShort = (deckKey: string | null | undefined) => {
   if (!deckKey) return "N/A";
   return `${deckKey.slice(0, 8)}…`;
@@ -83,6 +76,37 @@ const getResultClass = (result: "win" | "loss" | "draw" | null) => {
   if (result === "loss") return "border-rose-300/40 bg-rose-300/10 text-rose-100";
   if (result === "draw") return "border-amber-300/40 bg-amber-300/10 text-amber-100";
   return "border-white/20 bg-white/5 text-slate-200";
+};
+
+const buildTrophyPathPoints = (
+  points: Array<{ trophies: number }>,
+  width: number,
+  height: number
+) => {
+  if (points.length < 2) {
+    return { line: "", area: "", min: 0, max: 0 };
+  }
+
+  const values = points.map((point) => point.trophies);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = Math.max(max - min, 1);
+  const topPad = 12;
+  const bottomPad = 18;
+  const usableHeight = height - topPad - bottomPad;
+
+  const line = points
+    .map((point, index) => {
+      const x = (index / (points.length - 1)) * width;
+      const normalized = (point.trophies - min) / span;
+      const y = topPad + (1 - normalized) * usableHeight;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  const area = `${line} ${width},${height} 0,${height}`;
+
+  return { line, area, min, max };
 };
 
 const formatLoadError = (error: unknown, locale: Locale) => {
@@ -115,6 +139,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   const [mobileTab, setMobileTab] = useState<DashboardTab>("decks");
   const [opponentsVisibleCount, setOpponentsVisibleCount] = useState(15);
   const [trophyMapMode, setTrophyMapMode] = useState<TrophyMapMode>("player");
+  const [showTrophyGraph, setShowTrophyGraph] = useState(false);
 
   useEffect(() => {
     const queryTag = new URLSearchParams(window.location.search).get("tag") ?? "";
@@ -175,11 +200,17 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   useEffect(() => {
     setOpponentsVisibleCount(15);
     setTrophyMapMode("player");
+    setShowTrophyGraph(false);
   }, [payload?.player.tag]);
 
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
   const worstMatchupDeck = payload?.worstMatchupDeck ?? null;
-  const rangeLabel = buildBucketLabel(payload?.trophyMap.bucketMin ?? null, payload?.trophyMap.bucketMax ?? null);
+  const trophyHistory = payload?.trophyHistory ?? [];
+  const trophyChart = useMemo(() => {
+    const width = 720;
+    const height = 170;
+    return buildTrophyPathPoints(trophyHistory, width, height);
+  }, [trophyHistory]);
 
   const deckCardsByKey = useMemo(() => {
     const map = new Map<string, number[]>();
@@ -205,6 +236,14 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
       }
       if (opponent.latestOpponentDeckKey && opponent.latestOpponentDeckCardIds?.length === 8) {
         map.set(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds);
+      }
+    }
+    for (const change of payload?.deckChanges ?? []) {
+      if (change.oldDeckKey && change.oldDeckCardIds?.length === 8) {
+        map.set(change.oldDeckKey, change.oldDeckCardIds);
+      }
+      if (change.newDeckKey && change.newDeckCardIds?.length === 8) {
+        map.set(change.newDeckKey, change.newDeckCardIds);
       }
     }
 
@@ -538,7 +577,11 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
                     {locale === "fr" ? "Avant" : "Before"}
                   </p>
-                  {change.oldDeckKey && (deckCardsByKey.get(change.oldDeckKey)?.length ?? 0) === 8 ? (
+                  {(change.oldDeckCardIds?.length ?? 0) === 8 ? (
+                    <div className="mt-2">
+                      <DeckMini cardIds={change.oldDeckCardIds} cardLookup={cardLookup} />
+                    </div>
+                  ) : change.oldDeckKey && (deckCardsByKey.get(change.oldDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
                       <DeckMini cardIds={deckCardsByKey.get(change.oldDeckKey) ?? []} cardLookup={cardLookup} />
                     </div>
@@ -551,7 +594,11 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
                     {locale === "fr" ? "Après" : "After"}
                   </p>
-                  {(deckCardsByKey.get(change.newDeckKey)?.length ?? 0) === 8 ? (
+                  {(change.newDeckCardIds?.length ?? 0) === 8 ? (
+                    <div className="mt-2">
+                      <DeckMini cardIds={change.newDeckCardIds} cardLookup={cardLookup} />
+                    </div>
+                  ) : (deckCardsByKey.get(change.newDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
                       <DeckMini cardIds={deckCardsByKey.get(change.newDeckKey) ?? []} cardLookup={cardLookup} />
                     </div>
@@ -631,10 +678,24 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                 <p className="text-[11px] uppercase tracking-[0.1em] text-slate-300">{dict.common.arena}</p>
                 <p className="mt-1 text-sm font-semibold text-white">{payload.player.arena.name ?? "—"}</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-[11px] uppercase tracking-[0.1em] text-slate-300">{dict.dashboard.currentRange}</p>
-                <p className="mt-1 text-sm font-semibold text-white">{rangeLabel}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowTrophyGraph((value) => !value)}
+                className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 p-3 text-left transition hover:bg-cyan-300/15"
+              >
+                <p className="text-[11px] uppercase tracking-[0.1em] text-cyan-100/90">
+                  {locale === "fr" ? "Graphique trophées" : "Trophies chart"}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-white">
+                  {showTrophyGraph
+                    ? locale === "fr"
+                      ? "Masquer"
+                      : "Hide"
+                    : locale === "fr"
+                      ? "Afficher"
+                      : "Show"}
+                </p>
+              </button>
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <p className="text-[11px] uppercase tracking-[0.1em] text-slate-300">{dict.dashboard.lastScan}</p>
                 <p className="mt-1 text-xs text-white">{formatDateTime(payload.player.lastScanAt, locale)}</p>
@@ -644,6 +705,54 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                 <p className="mt-1 text-xs text-white">{formatDateTime(payload.player.nextScanAt, locale)}</p>
               </div>
             </div>
+
+            {showTrophyGraph ? (
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-white">
+                    {locale === "fr" ? "Évolution des trophées" : "Trophies progression"}
+                  </p>
+                  <p className="text-xs text-slate-300">
+                    {trophyHistory.length} {locale === "fr" ? "points" : "points"}
+                  </p>
+                </div>
+
+                {trophyHistory.length >= 2 ? (
+                  <div className="mt-3">
+                    <svg viewBox="0 0 720 170" className="h-44 w-full" role="img" aria-label={locale === "fr" ? "Graphique de progression des trophées" : "Trophy progression chart"}>
+                      <defs>
+                        <linearGradient id="trophy-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
+                          <stop offset="100%" stopColor="rgba(56,189,248,0.02)" />
+                        </linearGradient>
+                      </defs>
+                      <path d={`M ${trophyChart.area}`} fill="url(#trophy-area-gradient)" />
+                      <polyline
+                        points={trophyChart.line}
+                        fill="none"
+                        stroke="rgba(34,211,238,0.95)"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
+                      <span>{formatDateTime(trophyHistory[0]?.collectedAt, locale)}</span>
+                      <span>
+                        {locale === "fr" ? "Min" : "Min"} {trophyChart.min} • {locale === "fr" ? "Max" : "Max"} {trophyChart.max}
+                      </span>
+                      <span>{formatDateTime(trophyHistory[trophyHistory.length - 1]?.collectedAt, locale)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-300">
+                    {locale === "fr"
+                      ? "Pas assez d'historique pour afficher la courbe. Lance plusieurs scans pour enrichir les snapshots."
+                      : "Not enough history to draw a curve yet. Run more scans to enrich snapshots."}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </article>
 
           <article className="glass-panel p-4 sm:p-5">
