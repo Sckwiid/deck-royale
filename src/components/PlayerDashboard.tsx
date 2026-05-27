@@ -20,6 +20,7 @@ interface PlayerDashboardProps {
 type DashboardTab = "decks" | "opponents" | "changes";
 type TrophyMapMode = "player" | "opponent";
 type TrophyWindowKey = "6h" | "1d" | "7d" | "1m" | "3m" | "6m" | "1y" | "all";
+type BestDeckScope = "current_range" | "all_time";
 
 const TROPHY_WINDOWS: Array<{
   key: TrophyWindowKey;
@@ -95,35 +96,63 @@ const getResultClass = (result: "win" | "loss" | "draw" | null) => {
   return "border-white/20 bg-white/5 text-slate-200";
 };
 
+const formatModeLabel = (mode: string | null | undefined, locale: Locale) => {
+  if (!mode) return "Unknown";
+  const normalized = mode.trim().toLowerCase().replace(/\s+/g, "");
+  if (normalized.includes("ladder")) {
+    return locale === "fr" ? "Trophy Road" : "Trophy Road";
+  }
+  if (normalized.includes("ranked") || normalized.includes("pathoflegend")) {
+    return locale === "fr" ? "Ranked" : "Ranked";
+  }
+  return mode;
+};
+
 const buildTrophyPathPoints = (
   points: Array<{ trophies: number }>,
   width: number,
   height: number
 ) => {
   if (points.length < 2) {
-    return { line: "", area: "", min: 0, max: 0 };
+    return {
+      line: "",
+      area: "",
+      min: 0,
+      max: 0,
+      leftPad: 56,
+      rightPad: 14,
+      topPad: 12,
+      bottomPad: 20,
+      plotPoints: [] as Array<{ x: number; y: number }>
+    };
   }
 
   const values = points.map((point) => point.trophies);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = Math.max(max - min, 1);
+  const leftPad = 56;
+  const rightPad = 14;
   const topPad = 12;
-  const bottomPad = 18;
+  const bottomPad = 20;
+  const usableWidth = width - leftPad - rightPad;
   const usableHeight = height - topPad - bottomPad;
 
-  const line = points
+  const plotPoints = points
     .map((point, index) => {
-      const x = (index / (points.length - 1)) * width;
+      const x = leftPad + (index / (points.length - 1)) * usableWidth;
       const normalized = (point.trophies - min) / span;
       const y = topPad + (1 - normalized) * usableHeight;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
+      return { x, y };
+    });
+
+  const line = plotPoints
+    .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
     .join(" ");
 
-  const area = `${line} ${width},${height} 0,${height}`;
+  const area = `${line} ${(width - rightPad).toFixed(2)},${height} ${leftPad.toFixed(2)},${height}`;
 
-  return { line, area, min, max };
+  return { line, area, min, max, leftPad, rightPad, topPad, bottomPad, plotPoints };
 };
 
 const formatLoadError = (error: unknown, locale: Locale) => {
@@ -156,8 +185,11 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   const [mobileTab, setMobileTab] = useState<DashboardTab>("decks");
   const [opponentsVisibleCount, setOpponentsVisibleCount] = useState(15);
   const [trophyMapMode, setTrophyMapMode] = useState<TrophyMapMode>("player");
+  const [trophyMapVisibleCount, setTrophyMapVisibleCount] = useState(5);
   const [showTrophyGraph, setShowTrophyGraph] = useState(false);
   const [trophyWindow, setTrophyWindow] = useState<TrophyWindowKey>("7d");
+  const [bestDeckScope, setBestDeckScope] = useState<BestDeckScope>("current_range");
+  const [trophyHoverIndex, setTrophyHoverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const queryTag = new URLSearchParams(window.location.search).get("tag") ?? "";
@@ -218,12 +250,22 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
   useEffect(() => {
     setOpponentsVisibleCount(15);
     setTrophyMapMode("player");
+    setTrophyMapVisibleCount(5);
     setShowTrophyGraph(false);
     setTrophyWindow("7d");
+    setBestDeckScope("current_range");
+    setTrophyHoverIndex(null);
   }, [payload?.player.tag]);
 
   const recommendedDeck = payload?.recommendedDecksForCurrentRange?.[0] ?? null;
-  const worstMatchupDeck = payload?.worstMatchupDeck ?? null;
+  const bestDeckCurrentRange = payload?.bestDeckCurrentRange ?? recommendedDeck ?? null;
+  const bestDeckAllTime = payload?.bestDeckAllTime ?? null;
+  const selectedBestDeck = bestDeckScope === "all_time" ? bestDeckAllTime : bestDeckCurrentRange;
+  const worstMatchupCurrentRange =
+    payload?.worstMatchupCurrentRange ?? payload?.worstMatchupDeck ?? null;
+  const worstMatchupAllTime = payload?.worstMatchupAllTime ?? null;
+  const selectedWorstMatchup =
+    bestDeckScope === "all_time" ? worstMatchupAllTime : worstMatchupCurrentRange;
   const trophyHistory = payload?.trophyHistory ?? [];
   const trackedSinceAt = payload?.trackedSinceAt ?? trophyHistory[0]?.collectedAt ?? null;
   const filteredTrophyHistory = useMemo(() => {
@@ -254,6 +296,26 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     const height = 170;
     return buildTrophyPathPoints(filteredTrophyHistory, width, height);
   }, [filteredTrophyHistory]);
+  const trophyAxisTicks = useMemo(() => {
+    if (filteredTrophyHistory.length < 2) return [];
+    const tickCount = 5;
+    return Array.from({ length: tickCount }, (_, index) => {
+      const ratio = index / (tickCount - 1);
+      const value = Math.round(trophyChart.max - ratio * (trophyChart.max - trophyChart.min));
+      const y =
+        trophyChart.topPad +
+        ratio * (170 - trophyChart.topPad - trophyChart.bottomPad);
+      return { value, y };
+    });
+  }, [filteredTrophyHistory.length, trophyChart.max, trophyChart.min, trophyChart.topPad, trophyChart.bottomPad]);
+  const hoveredTrophyPoint =
+    trophyHoverIndex !== null && filteredTrophyHistory[trophyHoverIndex]
+      ? {
+          point: filteredTrophyHistory[trophyHoverIndex],
+          x: trophyChart.plotPoints[trophyHoverIndex]?.x ?? null,
+          y: trophyChart.plotPoints[trophyHoverIndex]?.y ?? null
+        }
+      : null;
 
   const deckCardsByKey = useMemo(() => {
     const map = new Map<string, number[]>();
@@ -263,6 +325,18 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     }
     for (const deck of payload?.recommendedDecksForCurrentRange ?? []) {
       map.set(deck.deckKey, deck.cardIds ?? []);
+    }
+    if (payload?.bestDeckCurrentRange?.deckKey) {
+      map.set(payload.bestDeckCurrentRange.deckKey, payload.bestDeckCurrentRange.cardIds ?? []);
+    }
+    if (payload?.bestDeckAllTime?.deckKey) {
+      map.set(payload.bestDeckAllTime.deckKey, payload.bestDeckAllTime.cardIds ?? []);
+    }
+    if (payload?.worstMatchupCurrentRange?.deckKey) {
+      map.set(payload.worstMatchupCurrentRange.deckKey, payload.worstMatchupCurrentRange.cardIds ?? []);
+    }
+    if (payload?.worstMatchupAllTime?.deckKey) {
+      map.set(payload.worstMatchupAllTime.deckKey, payload.worstMatchupAllTime.cardIds ?? []);
     }
     for (const lane of payload?.trophyMap.ranges ?? []) {
       map.set(lane.deckKey, lane.cardIds ?? []);
@@ -289,11 +363,23 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
         map.set(change.newDeckKey, change.newDeckCardIds);
       }
     }
+    for (const deck of payload?.playerDeckCatalog ?? []) {
+      map.set(deck.deckKey, deck.cardIds ?? []);
+    }
 
     return map;
   }, [payload]);
 
   const comparisonRows = useMemo(() => {
+    if ((payload?.playerDecksVsAverage?.length ?? 0) > 0) {
+      return (payload?.playerDecksVsAverage ?? []).map((deck) => ({
+        ...deck,
+        yourWinrate: deck.winrate,
+        averageWinrate: deck.averageWinrateInRange,
+        delta: deck.deltaWinrate
+      }));
+    }
+
     const averages = new Map<string, number | null>();
     for (const deck of payload?.recommendedDecksForCurrentRange ?? []) {
       averages.set(deck.deckKey, deck.winrate ?? null);
@@ -388,14 +474,28 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     trophyMapMode === "player"
       ? payload?.trophyMap.playerRanges ?? payload?.trophyMap.ranges ?? []
       : payload?.trophyMap.opponentRanges ?? [];
+  const visibleTrophyRanges = selectedTrophyRanges.slice(0, trophyMapVisibleCount);
+  const hasMoreTrophyRanges = selectedTrophyRanges.length > visibleTrophyRanges.length;
 
   const renderTrophyMap = () => (
     <section className="glass-panel p-4 sm:p-5">
       <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.trophyMap}</h2>
+      <p className="mt-1 text-xs text-slate-300">
+        {trophyMapMode === "player"
+          ? locale === "fr"
+            ? "Meilleurs decks joués par ce profil, triés par range de trophées."
+            : "Best decks used by this profile, grouped by trophy range."
+          : locale === "fr"
+            ? "Meilleurs decks adverses rencontrés dans les mêmes ranges."
+            : "Best opponent decks encountered in the same trophy ranges."}
+      </p>
       <div className="mt-3 inline-flex rounded-xl border border-white/15 bg-white/5 p-1">
         <button
           type="button"
-          onClick={() => setTrophyMapMode("player")}
+          onClick={() => {
+            setTrophyMapMode("player");
+            setTrophyMapVisibleCount(5);
+          }}
           className={`h-11 min-w-[44px] rounded-lg px-3 text-sm font-semibold transition ${
             trophyMapMode === "player"
               ? "bg-cyan-300/20 text-cyan-100"
@@ -406,7 +506,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
         </button>
         <button
           type="button"
-          onClick={() => setTrophyMapMode("opponent")}
+          onClick={() => {
+            setTrophyMapMode("opponent");
+            setTrophyMapVisibleCount(5);
+          }}
           className={`h-11 min-w-[44px] rounded-lg px-3 text-sm font-semibold transition ${
             trophyMapMode === "opponent"
               ? "bg-violet-300/20 text-violet-100"
@@ -430,7 +533,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {selectedTrophyRanges.map((lane) => {
+          {visibleTrophyRanges.map((lane) => {
             const active =
               typeof payload?.trophyMap.currentTrophies === "number" &&
               payload.trophyMap.currentTrophies >= lane.trophyMin &&
@@ -454,10 +557,19 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
               </article>
             );
           })}
+          {hasMoreTrophyRanges ? (
+            <button
+              type="button"
+              onClick={() => setTrophyMapVisibleCount((value) => value + 5)}
+              className="inline-flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+            >
+              {locale === "fr" ? "Voir plus de ranges" : "Show more ranges"}
+            </button>
+          ) : null}
         </div>
       )}
 
-      {selectedTrophyRanges.some((lane) => lane.games < 3) ? (
+      {selectedTrophyRanges.some((lane) => lane.games < 5) ? (
         <p className="mt-3 text-xs text-slate-300">
           {locale === "fr"
             ? "Certaines ranges restent en faible volume. Les stats se stabilisent avec les prochains scans."
@@ -654,6 +766,66 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
           ))}
         </div>
       )}
+
+      <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3">
+        <h3 className="font-display text-lg font-semibold text-white">
+          {locale === "fr" ? "Tous les decks détectés" : "All detected decks"}
+        </h3>
+        <p className="mt-1 text-xs text-slate-300">
+          {locale === "fr"
+            ? "Inclut les decks observés en Trophy Road et en Ranked."
+            : "Includes decks observed in Trophy Road and Ranked."}
+        </p>
+        {(payload?.playerDeckCatalog?.length ?? 0) === 0 ? (
+          <div className="mt-3">
+            <EmptyState
+              title={dict.common.noData}
+              description={
+                locale === "fr"
+                  ? "Les decks détectés apparaissent après plusieurs combats scannés."
+                  : "Detected decks appear after several scanned battles."
+              }
+            />
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {(payload?.playerDeckCatalog ?? []).map((deck) => (
+              <article
+                key={`${deck.deckKey}-${deck.mode}`}
+                className="rounded-lg border border-white/10 bg-black/20 p-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/15 px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-slate-200">
+                      {formatModeLabel(deck.mode, locale)}
+                    </span>
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.1em] ${
+                        deck.category === "ranked"
+                          ? "border-violet-200/35 bg-violet-300/10 text-violet-100"
+                          : "border-cyan-200/35 bg-cyan-300/10 text-cyan-100"
+                      }`}
+                    >
+                      {deck.category === "ranked"
+                        ? "Ranked"
+                        : locale === "fr"
+                          ? "Trophy Road"
+                          : "Trophy Road"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <WinrateBadge value={deck.winrate} />
+                    <GamesCount count={deck.games} label={dict.dashboard.basedOnGames} />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <DeckMini cardIds={deck.cardIds} cardLookup={cardLookup} />
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 
@@ -792,13 +964,42 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
                 {filteredTrophyHistory.length >= 2 ? (
                   <div className="mt-3">
-                    <svg viewBox="0 0 720 170" className="h-44 w-full" role="img" aria-label={locale === "fr" ? "Graphique de progression des trophées" : "Trophy progression chart"}>
+                    <svg
+                      viewBox="0 0 720 170"
+                      className="h-44 w-full"
+                      role="img"
+                      aria-label={
+                        locale === "fr"
+                          ? "Graphique de progression des trophées"
+                          : "Trophy progression chart"
+                      }
+                    >
                       <defs>
                         <linearGradient id="trophy-area-gradient-main" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
                           <stop offset="100%" stopColor="rgba(56,189,248,0.02)" />
                         </linearGradient>
                       </defs>
+                      {trophyAxisTicks.map((tick, index) => (
+                        <g key={`tick-${index}`}>
+                          <line
+                            x1={trophyChart.leftPad}
+                            y1={tick.y}
+                            x2={720 - trophyChart.rightPad}
+                            y2={tick.y}
+                            stroke="rgba(148,163,184,0.22)"
+                            strokeDasharray="4 4"
+                          />
+                          <text
+                            x={6}
+                            y={tick.y + 4}
+                            fill="rgba(203,213,225,0.85)"
+                            fontSize="11"
+                          >
+                            {tick.value}
+                          </text>
+                        </g>
+                      ))}
                       <path d={`M ${trophyChart.area}`} fill="url(#trophy-area-gradient-main)" />
                       <polyline
                         points={trophyChart.line}
@@ -808,7 +1009,25 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
+                      {trophyChart.plotPoints.map((point, index) => (
+                        <circle
+                          key={`dot-${index}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r={trophyHoverIndex === index ? 4 : 2.5}
+                          fill={trophyHoverIndex === index ? "rgba(34,211,238,1)" : "rgba(34,211,238,0.75)"}
+                          onMouseEnter={() => setTrophyHoverIndex(index)}
+                          onMouseLeave={() => setTrophyHoverIndex(null)}
+                        />
+                      ))}
                     </svg>
+                    {hoveredTrophyPoint ? (
+                      <p className="mt-2 text-xs text-cyan-100">
+                        {locale === "fr" ? "Point sélectionné:" : "Selected point:"}{" "}
+                        {hoveredTrophyPoint.point.trophies} {locale === "fr" ? "trophées" : "trophies"} •{" "}
+                        {formatDateTime(hoveredTrophyPoint.point.collectedAt, locale)}
+                      </p>
+                    ) : null}
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
                       <span>{formatDateTime(filteredTrophyHistory[0]?.collectedAt, locale)}</span>
                       <span>
@@ -834,23 +1053,71 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
           </article>
 
           <article className="glass-panel p-4 sm:p-5">
-            <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.bestDeckNow}</h2>
-            <p className="mt-1 text-sm text-slate-300">{dict.dashboard.bestDeckNowNote}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-white">
+                  {bestDeckScope === "current_range" && payload.trophyMap.bucketMin !== null && payload.trophyMap.bucketMax !== null
+                    ? locale === "fr"
+                      ? `Meilleur deck dans ta range actuelle (${payload.trophyMap.bucketMin}-${payload.trophyMap.bucketMax})`
+                      : `Best deck in your current range (${payload.trophyMap.bucketMin}-${payload.trophyMap.bucketMax})`
+                    : locale === "fr"
+                      ? "Meilleur deck all time"
+                      : "Best deck all time"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-300">{dict.dashboard.bestDeckNowNote}</p>
+              </div>
+              <div className="inline-flex rounded-xl border border-white/15 bg-white/5 p-1">
+                <button
+                  type="button"
+                  onClick={() => setBestDeckScope("current_range")}
+                  className={`h-10 min-w-[44px] rounded-lg px-3 text-xs font-semibold transition ${
+                    bestDeckScope === "current_range"
+                      ? "bg-cyan-300/20 text-cyan-100"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {locale === "fr" ? "Range actuelle" : "Current range"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBestDeckScope("all_time")}
+                  className={`h-10 min-w-[44px] rounded-lg px-3 text-xs font-semibold transition ${
+                    bestDeckScope === "all_time"
+                      ? "bg-violet-300/20 text-violet-100"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {locale === "fr" ? "All time" : "All time"}
+                </button>
+              </div>
+            </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-4">
                 <p className="text-xs uppercase tracking-[0.1em] text-cyan-100/90">
-                  {locale === "fr" ? "Meilleur deck de ta range actuelle" : "Best deck for your current range"}
+                  {bestDeckScope === "current_range"
+                    ? locale === "fr"
+                      ? "Meilleur deck dans ta range actuelle"
+                      : "Best deck for your current range"
+                    : locale === "fr"
+                      ? "Meilleur deck all time"
+                      : "Best deck all time"}
                 </p>
-                {recommendedDeck ? (
+                {selectedBestDeck ? (
                   <>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <TrophyRangePill min={recommendedDeck.trophyMin} max={recommendedDeck.trophyMax} active />
-                      <WinrateBadge value={recommendedDeck.winrate} />
+                      {bestDeckScope === "current_range" && selectedBestDeck && "trophyMin" in selectedBestDeck && selectedBestDeck.trophyMin !== null && selectedBestDeck.trophyMax !== null ? (
+                        <TrophyRangePill min={selectedBestDeck.trophyMin} max={selectedBestDeck.trophyMax} active />
+                      ) : (
+                        <span className="inline-flex rounded-full border border-violet-200/40 bg-violet-300/15 px-3 py-1 text-sm font-semibold text-violet-100">
+                          ALL TIME
+                        </span>
+                      )}
+                      <WinrateBadge value={selectedBestDeck.winrate} />
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <DeckMini cardIds={recommendedDeck.cardIds} cardLookup={cardLookup} />
-                      <GamesCount count={recommendedDeck.games} label={dict.dashboard.basedOnGames} />
+                      <DeckMini cardIds={selectedBestDeck.cardIds} cardLookup={cardLookup} />
+                      <GamesCount count={selectedBestDeck.games} label={dict.dashboard.basedOnGames} />
                     </div>
                   </>
                 ) : (
@@ -862,18 +1129,24 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
               <div className="rounded-xl border border-rose-300/30 bg-rose-300/10 p-4">
                 <p className="text-xs uppercase tracking-[0.1em] text-rose-100/90">
-                  {locale === "fr" ? "Deck contre lequel tu perds le plus" : "Deck you lose to the most"}
+                  {bestDeckScope === "current_range"
+                    ? locale === "fr"
+                      ? "Deck contre lequel tu perds le plus (range actuelle)"
+                      : "Deck you lose to the most (current range)"
+                    : locale === "fr"
+                      ? "Deck contre lequel tu perds le plus (all time)"
+                      : "Deck you lose to the most (all time)"}
                 </p>
-                {worstMatchupDeck ? (
+                {selectedWorstMatchup ? (
                   <>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className="inline-flex rounded-full border border-rose-200/40 bg-rose-200/10 px-3 py-1 text-sm font-semibold text-rose-100">
-                        {worstMatchupDeck.lossRate === null ? "N/A" : `${worstMatchupDeck.lossRate.toFixed(1)}%`}
+                        {selectedWorstMatchup.lossRate === null ? "N/A" : `${selectedWorstMatchup.lossRate.toFixed(1)}%`}
                       </span>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <DeckMini cardIds={worstMatchupDeck.cardIds} cardLookup={cardLookup} />
-                      <GamesCount count={worstMatchupDeck.games} label={dict.dashboard.basedOnGames} />
+                      <DeckMini cardIds={selectedWorstMatchup.cardIds} cardLookup={cardLookup} />
+                      <GamesCount count={selectedWorstMatchup.games} label={dict.dashboard.basedOnGames} />
                     </div>
                   </>
                 ) : (
@@ -891,7 +1164,13 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
               </div>
             </div>
 
-            <p className="mt-4 text-xs text-slate-300">
+            <p className="mt-3 text-xs text-slate-300">
+              {locale === "fr"
+                ? "Indicateurs EVO/GOLD: indisponibles dans l'agrégation actuelle (données non persistées par carte dans ce format)."
+                : "EVO/GOLD indicators: unavailable in the current aggregate format (per-card state is not persisted in this payload)."}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-300">
               {dict.dashboard.statsUpdatedAt} {formatDateTime(payload.statsUpdatedAt, locale)}
             </p>
           </article>
@@ -919,12 +1198,12 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             </div>
           </div>
 
-          <div className="hidden md:grid md:grid-cols-2 md:gap-4">
+          <div className="hidden md:grid md:grid-cols-2 md:items-start md:gap-4">
             {renderDecksVsAverage()}
             {renderTrophyMap()}
           </div>
 
-          <div className="hidden md:grid md:grid-cols-2 md:gap-4">
+          <div className="hidden md:grid md:grid-cols-2 md:items-start md:gap-4">
             {renderDirectOpponents()}
             {renderDeckChanges()}
           </div>

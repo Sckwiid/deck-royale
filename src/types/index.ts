@@ -20,6 +20,77 @@ export interface CardInfo {
 
 export interface AnalyzePlayerResponse {
   ok: boolean;
+  bestDeckCurrentRange?: {
+    deckKey: string;
+    trophyMin: number | null;
+    trophyMax: number | null;
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    winrate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+    scope: "current_range";
+  } | null;
+  bestDeckAllTime?: {
+    deckKey: string;
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    winrate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+    scope: "all_time";
+  } | null;
+  worstMatchupCurrentRange?: {
+    deckKey: string;
+    games: number;
+    losses: number;
+    wins: number;
+    draws: number;
+    lossRate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+    scope: "current_range";
+  } | null;
+  worstMatchupAllTime?: {
+    deckKey: string;
+    games: number;
+    losses: number;
+    wins: number;
+    draws: number;
+    lossRate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+    scope: "all_time";
+  } | null;
+  playerDecksVsAverage?: Array<{
+    deckKey: string;
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    winrate: number | null;
+    averageWinrateInRange: number | null;
+    averageGamesInRange: number | null;
+    deltaWinrate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+  }>;
+  playerDeckCatalog?: Array<{
+    deckKey: string;
+    mode: string;
+    category: "trophy_road" | "ranked" | "other";
+    games: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    winrate: number | null;
+    avgElixir: number | null;
+    cardIds: number[];
+  }>;
   player: {
     tag: string;
     name: string;
