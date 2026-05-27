@@ -5,6 +5,7 @@ import {
   getPlayerBattlelog,
   isValidPlayerTag,
   normalizePlayerTag,
+  type ClashCardRef,
   type ClashBattle,
   type ClashPlayerProfile
 } from "./clash.ts";
@@ -43,6 +44,15 @@ interface ScannedOpponentSeed {
 }
 
 export interface AnalyzeFrontendPayload {
+  deckCardIndicators: Array<{
+    deckKey: string;
+    cards: Array<{
+      cardId: number;
+      evo: boolean;
+      gold: boolean;
+      samples: number;
+    }>;
+  }>;
   bestDeckCurrentRange: {
     deckKey: string;
     trophyMin: number | null;
@@ -397,6 +407,12 @@ interface PlayerBattleAnalyticsRow {
   player_a_result: "win" | "loss" | "draw" | null;
 }
 
+interface DeckCardIndicatorsRow {
+  player_a_deck_key: string | null;
+  player_b_deck_key: string | null;
+  raw: ClashBattle | null;
+}
+
 interface DeckAggregate {
   deckKey: string;
   wins: number;
@@ -480,6 +496,149 @@ const fetchPlayerBattleAnalyticsRows = async (
   }
 
   return rows;
+};
+
+const normalizeTagSafe = (value?: string | null) => {
+  if (!value) return null;
+  const clean = normalizePlayerTag(String(value));
+  return clean ? formatPlayerTag(clean) : null;
+};
+
+const extractCardsByPerspectiveFromRawBattle = (
+  raw: ClashBattle | null,
+  sourceTag: string
+): { sourceCards: ClashCardRef[]; opponentCards: ClashCardRef[] } => {
+  if (!raw) {
+    return { sourceCards: [], opponentCards: [] };
+  }
+
+  const team = Array.isArray(raw.team) ? raw.team : [];
+  const opponent = Array.isArray(raw.opponent) ? raw.opponent : [];
+  const sourceNormalized = normalizePlayerTag(sourceTag);
+
+  const sourceInTeam = team.find(
+    (entry) => normalizePlayerTag(String(entry?.tag ?? "")) === sourceNormalized
+  );
+  if (sourceInTeam) {
+    return {
+      sourceCards: Array.isArray(sourceInTeam.cards) ? sourceInTeam.cards : [],
+      opponentCards: Array.isArray(opponent[0]?.cards) ? opponent[0]?.cards ?? [] : []
+    };
+  }
+
+  const sourceInOpponent = opponent.find(
+    (entry) => normalizePlayerTag(String(entry?.tag ?? "")) === sourceNormalized
+  );
+  if (sourceInOpponent) {
+    return {
+      sourceCards: Array.isArray(sourceInOpponent.cards) ? sourceInOpponent.cards : [],
+      opponentCards: Array.isArray(team[0]?.cards) ? team[0]?.cards ?? [] : []
+    };
+  }
+
+  return {
+    sourceCards: Array.isArray(team[0]?.cards) ? team[0]?.cards ?? [] : [],
+    opponentCards: Array.isArray(opponent[0]?.cards) ? opponent[0]?.cards ?? [] : []
+  };
+};
+
+const mergeDeckCardIndicators = (
+  byDeck: Map<
+    string,
+    Map<number, { cardId: number; evo: boolean; gold: boolean; samples: number }>
+  >,
+  deckKey: string | null,
+  cards: ClashCardRef[]
+) => {
+  if (!deckKey || !Array.isArray(cards) || cards.length === 0) {
+    return;
+  }
+
+  let byCard = byDeck.get(deckKey);
+  if (!byCard) {
+    byCard = new Map();
+    byDeck.set(deckKey, byCard);
+  }
+
+  for (const card of cards) {
+    const cardId = Number(card?.id);
+    if (!Number.isInteger(cardId) || cardId <= 0) continue;
+
+    const evo = Number(card?.evolutionLevel ?? 0) > 0;
+    const gold = Number(card?.starLevel ?? 0) > 0 || Number(card?.level ?? 0) >= 15;
+
+    const existing = byCard.get(cardId) ?? {
+      cardId,
+      evo: false,
+      gold: false,
+      samples: 0
+    };
+    existing.evo = existing.evo || evo;
+    existing.gold = existing.gold || gold;
+    existing.samples += 1;
+    byCard.set(cardId, existing);
+  }
+};
+
+const fetchDeckCardIndicators = async (
+  supabaseAdmin: SupabaseClient,
+  playerTag: string
+): Promise<AnalyzeFrontendPayload["deckCardIndicators"]> => {
+  const pageSize = 1000;
+  const maxRows = 5000;
+  const rows: DeckCardIndicatorsRow[] = [];
+
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabaseAdmin
+      .from("battles")
+      .select("player_a_tag, player_b_tag, player_a_deck_key, player_b_deck_key, raw")
+      .eq("player_a_tag", playerTag)
+      .order("battle_time", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Could not load deck card indicators: ${error.message}`);
+    }
+
+    const chunk = (data ?? []) as Array<
+      DeckCardIndicatorsRow & { player_a_tag?: string | null; player_b_tag?: string | null }
+    >;
+    if (chunk.length === 0) break;
+
+    for (const row of chunk) {
+      const rowSourceTag = normalizeTagSafe(row.player_a_tag ?? null);
+      const rowOpponentTag = normalizeTagSafe(row.player_b_tag ?? null);
+      if (!rowSourceTag || rowSourceTag !== playerTag || !rowOpponentTag) continue;
+      rows.push({
+        player_a_deck_key: row.player_a_deck_key ?? null,
+        player_b_deck_key: row.player_b_deck_key ?? null,
+        raw: (row.raw as ClashBattle | null) ?? null
+      });
+    }
+
+    if (chunk.length < pageSize) break;
+  }
+
+  if (rows.length === 0) return [];
+
+  const byDeck = new Map<
+    string,
+    Map<number, { cardId: number; evo: boolean; gold: boolean; samples: number }>
+  >();
+
+  for (const row of rows) {
+    const { sourceCards, opponentCards } = extractCardsByPerspectiveFromRawBattle(row.raw, playerTag);
+    mergeDeckCardIndicators(byDeck, row.player_a_deck_key, sourceCards);
+    mergeDeckCardIndicators(byDeck, row.player_b_deck_key, opponentCards);
+  }
+
+  return [...byDeck.entries()]
+    .map(([deckKey, cardsMap]) => ({
+      deckKey,
+      cards: [...cardsMap.values()].sort((a, b) => a.cardId - b.cardId)
+    }))
+    .filter((entry) => entry.cards.length > 0);
 };
 
 const aggregateDecksFromBattleRows = (
@@ -1975,14 +2134,14 @@ export const ingestPlayerData = async (
         : deckLookup.get(row.deckKey)?.avgElixir ?? null
   }));
 
-  const trophyMap = await fetchTrophyMapRanges(
-    options.supabaseAdmin,
-    sourceTag,
-    profile.trophies ?? null
-  );
-  const deckChanges = await fetchDeckChanges(options.supabaseAdmin, sourceTag);
-  const directOpponents = await fetchDirectOpponentsDetailed(options.supabaseAdmin, sourceTag);
-  const trophyHistory = await fetchTrophyHistory(options.supabaseAdmin, sourceTag);
+  const [trophyMap, deckChanges, directOpponents, trophyHistory, deckCardIndicators] =
+    await Promise.all([
+      fetchTrophyMapRanges(options.supabaseAdmin, sourceTag, profile.trophies ?? null),
+      fetchDeckChanges(options.supabaseAdmin, sourceTag),
+      fetchDirectOpponentsDetailed(options.supabaseAdmin, sourceTag),
+      fetchTrophyHistory(options.supabaseAdmin, sourceTag),
+      fetchDeckCardIndicators(options.supabaseAdmin, sourceTag)
+    ]);
   const playerDecksVsAverage = await fetchPlayerDecksVsAverage(
     options.supabaseAdmin,
     currentBucket,
@@ -2015,6 +2174,7 @@ export const ingestPlayerData = async (
   const worstMatchupDeck = worstMatchupCurrentRange ?? worstMatchupAllTime ?? null;
 
   const analyzePayload: AnalyzeFrontendPayload = {
+    deckCardIndicators,
     bestDeckCurrentRange,
     bestDeckAllTime,
     worstMatchupCurrentRange,

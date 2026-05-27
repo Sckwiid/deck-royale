@@ -20,6 +20,15 @@ export interface CardInfo {
 
 export interface AnalyzePlayerResponse {
   ok: boolean;
+  deckCardIndicators?: Array<{
+    deckKey: string;
+    cards: Array<{
+      cardId: number;
+      evo: boolean;
+      gold: boolean;
+      samples: number;
+    }>;
+  }>;
   bestDeckCurrentRange?: {
     deckKey: string;
     trophyMin: number | null;

@@ -395,6 +395,37 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
     return map;
   }, [payload]);
 
+  const deckIndicatorsByKey = useMemo(() => {
+    const map = new Map<string, Map<number, { evo: boolean; gold: boolean }>>();
+    for (const deck of payload?.deckCardIndicators ?? []) {
+      if (!deck?.deckKey) continue;
+      const byCard = new Map<number, { evo: boolean; gold: boolean }>();
+      for (const card of deck.cards ?? []) {
+        const cardId = Number(card?.cardId);
+        if (!Number.isInteger(cardId) || cardId <= 0) continue;
+        byCard.set(cardId, {
+          evo: Boolean(card.evo),
+          gold: Boolean(card.gold)
+        });
+      }
+      if (byCard.size > 0) {
+        map.set(deck.deckKey, byCard);
+      }
+    }
+    return map;
+  }, [payload?.deckCardIndicators]);
+
+  const hasAnyDeckIndicators = useMemo(
+    () =>
+      (payload?.deckCardIndicators ?? []).some((deck) =>
+        (deck.cards ?? []).some((card) => card.evo || card.gold)
+      ),
+    [payload?.deckCardIndicators]
+  );
+
+  const resolveDeckIndicators = (deckKey: string | null | undefined) =>
+    deckKey ? deckIndicatorsByKey.get(deckKey) : undefined;
+
   const resolveDeckCardIds = (
     deckKey: string | null | undefined,
     cardIds: number[] | null | undefined
@@ -476,6 +507,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <DeckMini
                     cardIds={resolveDeckCardIds(row.deckKey, row.cardIds)}
                     cardLookup={cardLookup}
+                    cardIndicatorsById={resolveDeckIndicators(row.deckKey)}
                   />
                   <div className="text-right">
                     <WinrateBadge value={row.yourWinrate} />
@@ -514,6 +546,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <DeckMini
                     cardIds={resolveDeckCardIds(row.deckKey, row.cardIds)}
                     cardLookup={cardLookup}
+                    cardIndicatorsById={resolveDeckIndicators(row.deckKey)}
                   />
                   <WinrateBadge value={row.yourWinrate} />
                   <WinrateBadge value={row.averageWinrate} />
@@ -616,6 +649,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <DeckMini
                     cardIds={resolveDeckCardIds(lane.deckKey, lane.cardIds)}
                     cardLookup={cardLookup}
+                    cardIndicatorsById={resolveDeckIndicators(lane.deckKey)}
                   />
                   <GamesCount count={lane.games} label={dict.dashboard.basedOnGames} />
                 </div>
@@ -696,6 +730,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       <DeckMini
                         cardIds={resolveDeckCardIds(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds)}
                         cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(opponent.latestPlayerDeckKey)}
                       />
                     </div>
                   ) : (
@@ -713,6 +748,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       <DeckMini
                         cardIds={resolveDeckCardIds(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds)}
                         cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(opponent.latestOpponentDeckKey)}
                       />
                     </div>
                   ) : (
@@ -805,11 +841,19 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   </p>
                   {(change.oldDeckCardIds?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={change.oldDeckCardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={change.oldDeckCardIds}
+                        cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(change.oldDeckKey)}
+                      />
                     </div>
                   ) : change.oldDeckKey && (deckCardsByKey.get(change.oldDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={deckCardsByKey.get(change.oldDeckKey) ?? []} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={deckCardsByKey.get(change.oldDeckKey) ?? []}
+                        cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(change.oldDeckKey)}
+                      />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">{deckKeyShort(change.oldDeckKey)}</p>
@@ -822,11 +866,19 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   </p>
                   {(change.newDeckCardIds?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={change.newDeckCardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={change.newDeckCardIds}
+                        cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(change.newDeckKey)}
+                      />
                     </div>
                   ) : (deckCardsByKey.get(change.newDeckKey)?.length ?? 0) === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={deckCardsByKey.get(change.newDeckKey) ?? []} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={deckCardsByKey.get(change.newDeckKey) ?? []}
+                        cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(change.newDeckKey)}
+                      />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">{deckKeyShort(change.newDeckKey)}</p>
@@ -897,6 +949,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <DeckMini
                     cardIds={resolveDeckCardIds(deck.deckKey, deck.cardIds)}
                     cardLookup={cardLookup}
+                    cardIndicatorsById={resolveDeckIndicators(deck.deckKey)}
                   />
                 </div>
               </article>
@@ -1197,6 +1250,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       <DeckMini
                         cardIds={resolveDeckCardIds(selectedBestDeck.deckKey, selectedBestDeck.cardIds)}
                         cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(selectedBestDeck.deckKey)}
                       />
                       <GamesCount count={selectedBestDeck.games} label={dict.dashboard.basedOnGames} />
                     </div>
@@ -1229,6 +1283,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       <DeckMini
                         cardIds={resolveDeckCardIds(selectedWorstMatchup.deckKey, selectedWorstMatchup.cardIds)}
                         cardLookup={cardLookup}
+                        cardIndicatorsById={resolveDeckIndicators(selectedWorstMatchup.deckKey)}
                       />
                       <GamesCount count={selectedWorstMatchup.games} label={dict.dashboard.basedOnGames} />
                     </div>
@@ -1249,9 +1304,13 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             </div>
 
             <p className="mt-3 text-xs text-slate-300">
-              {locale === "fr"
-                ? "Indicateurs EVO/GOLD: indisponibles dans l'agrégation actuelle (données non persistées par carte dans ce format)."
-                : "EVO/GOLD indicators: unavailable in the current aggregate format (per-card state is not persisted in this payload)."}
+              {hasAnyDeckIndicators
+                ? locale === "fr"
+                  ? "Indicateurs EVO/GOLD affichés quand détectés dans les logs de bataille. Les anciennes parties sans cet état peuvent rester neutres."
+                  : "EVO/GOLD indicators are shown when detected in battle logs. Older battles without this state can remain neutral."
+                : locale === "fr"
+                  ? "Indicateurs EVO/GOLD non détectés pour l'instant dans les combats enregistrés."
+                  : "No EVO/GOLD indicators detected yet in recorded battles."}
             </p>
 
             <p className="mt-2 text-xs text-slate-300">

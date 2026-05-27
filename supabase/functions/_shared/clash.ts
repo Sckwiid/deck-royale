@@ -8,7 +8,10 @@ const BASE_SANITIZED = CLASH_API_BASE.replace(/\/+$/, "");
 export interface ClashCardRef {
   id: number;
   name?: string;
+  level?: number;
   maxLevel?: number;
+  starLevel?: number;
+  evolutionLevel?: number;
   elixirCost?: number;
   iconUrls?: {
     medium?: string;
