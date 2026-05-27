@@ -545,7 +545,15 @@ const extractCardsByPerspectiveFromRawBattle = (
 const mergeDeckCardIndicators = (
   byDeck: Map<
     string,
-    Map<number, { cardId: number; evo: boolean; gold: boolean; samples: number }>
+    Map<
+      number,
+      {
+        cardId: number;
+        evoHits: number;
+        goldHits: number;
+        samples: number;
+      }
+    >
   >,
   deckKey: string | null,
   cards: ClashCardRef[]
@@ -564,17 +572,20 @@ const mergeDeckCardIndicators = (
     const cardId = Number(card?.id);
     if (!Number.isInteger(cardId) || cardId <= 0) continue;
 
-    const evo = Number(card?.evolutionLevel ?? 0) > 0;
-    const gold = Number(card?.starLevel ?? 0) > 0 || Number(card?.level ?? 0) >= 15;
+    const evolutionLevel = Number(card?.evolutionLevel ?? 0);
+    const starLevel = Number(card?.starLevel ?? 0);
+    // Keep strict thresholds to avoid false positives from sparse/legacy raw fields.
+    const evoHit = Number.isFinite(evolutionLevel) && evolutionLevel >= 2;
+    const goldHit = Number.isFinite(starLevel) && starLevel >= 2;
 
     const existing = byCard.get(cardId) ?? {
       cardId,
-      evo: false,
-      gold: false,
+      evoHits: 0,
+      goldHits: 0,
       samples: 0
     };
-    existing.evo = existing.evo || evo;
-    existing.gold = existing.gold || gold;
+    if (evoHit) existing.evoHits += 1;
+    if (goldHit) existing.goldHits += 1;
     existing.samples += 1;
     byCard.set(cardId, existing);
   }
@@ -624,7 +635,15 @@ const fetchDeckCardIndicators = async (
 
   const byDeck = new Map<
     string,
-    Map<number, { cardId: number; evo: boolean; gold: boolean; samples: number }>
+    Map<
+      number,
+      {
+        cardId: number;
+        evoHits: number;
+        goldHits: number;
+        samples: number;
+      }
+    >
   >();
 
   for (const row of rows) {
@@ -634,10 +653,37 @@ const fetchDeckCardIndicators = async (
   }
 
   return [...byDeck.entries()]
-    .map(([deckKey, cardsMap]) => ({
-      deckKey,
-      cards: [...cardsMap.values()].sort((a, b) => a.cardId - b.cardId)
-    }))
+    .map(([deckKey, cardsMap]) => {
+      const scoredCards = [...cardsMap.values()].map((card) => {
+        const sampleCount = Math.max(1, Number(card.samples ?? 0));
+        return {
+          cardId: card.cardId,
+          samples: sampleCount,
+          evoScore: Number(card.evoHits ?? 0) / sampleCount,
+          goldScore: Number(card.goldHits ?? 0) / sampleCount
+        };
+      });
+
+      const evoCandidates = scoredCards
+        .filter((card) => card.evoScore >= 0.35)
+        .sort((a, b) => {
+          if (b.evoScore !== a.evoScore) return b.evoScore - a.evoScore;
+          return b.samples - a.samples;
+        });
+      const allowedEvoIds = new Set(evoCandidates.slice(0, 2).map((card) => card.cardId));
+
+      return {
+        deckKey,
+        cards: scoredCards
+          .map((card) => ({
+            cardId: card.cardId,
+            evo: allowedEvoIds.has(card.cardId),
+            gold: card.goldScore >= 0.35,
+            samples: card.samples
+          }))
+          .sort((a, b) => a.cardId - b.cardId)
+      };
+    })
     .filter((entry) => entry.cards.length > 0);
 };
 
