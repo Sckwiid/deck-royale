@@ -572,11 +572,18 @@ const mergeDeckCardIndicators = (
     const cardId = Number(card?.id);
     if (!Number.isInteger(cardId) || cardId <= 0) continue;
 
-    const evolutionLevel = Number(card?.evolutionLevel ?? 0);
-    const starLevel = Number(card?.starLevel ?? 0);
-    // Keep strict thresholds to avoid false positives from sparse/legacy raw fields.
-    const evoHit = Number.isFinite(evolutionLevel) && evolutionLevel >= 2;
-    const goldHit = Number.isFinite(starLevel) && starLevel >= 2;
+    const rawCard = card as Record<string, unknown>;
+    // Only trust explicit per-battle state flags. Numeric progression fields such as
+    // evolutionLevel/starLevel are player progression and can over-label cards.
+    const evoHit =
+      rawCard.isEvolution === true ||
+      rawCard.isEvolved === true ||
+      rawCard.selectedEvolution === true ||
+      rawCard.usesEvolution === true;
+    const goldHit =
+      rawCard.isGold === true ||
+      rawCard.selectedGold === true ||
+      rawCard.goldSkin === true;
 
     const existing = byCard.get(cardId) ?? {
       cardId,
