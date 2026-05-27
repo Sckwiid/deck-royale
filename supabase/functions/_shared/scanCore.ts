@@ -461,7 +461,7 @@ const aggregateDecksFromBattleRows = (
       continue;
     }
 
-    if (bucket?.min !== null && bucket?.max !== null) {
+    if (bucket && bucket.min !== null && bucket.max !== null) {
       const trophies = row.player_a_start_trophies;
       if (!Number.isFinite(trophies ?? null)) {
         continue;
