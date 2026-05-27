@@ -97,15 +97,26 @@ const getResultClass = (result: "win" | "loss" | "draw" | null) => {
 };
 
 const formatModeLabel = (mode: string | null | undefined, locale: Locale) => {
-  if (!mode) return "Unknown";
+  if (!mode) return locale === "fr" ? "Inconnu" : "Unknown";
   const normalized = mode.trim().toLowerCase().replace(/\s+/g, "");
-  if (normalized.includes("ladder")) {
-    return locale === "fr" ? "Trophy Road" : "Trophy Road";
-  }
-  if (normalized.includes("ranked") || normalized.includes("pathoflegend")) {
-    return locale === "fr" ? "Ranked" : "Ranked";
-  }
+  if (normalized.includes("ladder")) return "Ladder";
+  if (normalized.includes("ranked")) return "Ranked";
+  if (normalized.includes("pathoflegend")) return locale === "fr" ? "Path of Legends" : "Path of Legends";
+  if (normalized.includes("teamvsteam")) return locale === "fr" ? "2v2 équipe" : "2v2 team";
+  if (normalized.includes("cwbattle1v1")) return locale === "fr" ? "Guerre de clans 1v1" : "Clan War 1v1";
+  if (normalized.includes("mirrordeck")) return locale === "fr" ? "Miroir amical" : "Mirror friendly";
+  if (normalized.includes("draft")) return "Draft";
   return mode;
+};
+
+const isCompetitiveDeckMode = (mode: string | null | undefined) => {
+  if (typeof mode !== "string") return false;
+  const normalized = mode.trim().toLowerCase().replace(/\s+/g, "");
+  return (
+    normalized.includes("ladder") ||
+    normalized.includes("ranked") ||
+    normalized.includes("pathoflegend")
+  );
 };
 
 const buildTrophyPathPoints = (
@@ -319,56 +330,86 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
 
   const deckCardsByKey = useMemo(() => {
     const map = new Map<string, number[]>();
+    const upsertDeckCards = (deckKey: string | null | undefined, cardIds: number[] | null | undefined) => {
+      if (!deckKey) return;
+      const normalized = Array.isArray(cardIds)
+        ? cardIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+        : [];
+      const existing = map.get(deckKey) ?? [];
+
+      // Keep the richest data and never overwrite 8 known cards with an empty array.
+      if (existing.length === 8 && normalized.length < 8) return;
+      if (normalized.length === 0 && existing.length > 0) return;
+      if (normalized.length >= existing.length) {
+        map.set(deckKey, normalized);
+      }
+    };
 
     for (const deck of payload?.recentDecks ?? []) {
-      map.set(deck.deckKey, deck.cardIds ?? []);
+      upsertDeckCards(deck.deckKey, deck.cardIds ?? []);
     }
     for (const deck of payload?.recommendedDecksForCurrentRange ?? []) {
-      map.set(deck.deckKey, deck.cardIds ?? []);
+      upsertDeckCards(deck.deckKey, deck.cardIds ?? []);
     }
     if (payload?.bestDeckCurrentRange?.deckKey) {
-      map.set(payload.bestDeckCurrentRange.deckKey, payload.bestDeckCurrentRange.cardIds ?? []);
+      upsertDeckCards(payload.bestDeckCurrentRange.deckKey, payload.bestDeckCurrentRange.cardIds ?? []);
     }
     if (payload?.bestDeckAllTime?.deckKey) {
-      map.set(payload.bestDeckAllTime.deckKey, payload.bestDeckAllTime.cardIds ?? []);
+      upsertDeckCards(payload.bestDeckAllTime.deckKey, payload.bestDeckAllTime.cardIds ?? []);
     }
     if (payload?.worstMatchupCurrentRange?.deckKey) {
-      map.set(payload.worstMatchupCurrentRange.deckKey, payload.worstMatchupCurrentRange.cardIds ?? []);
+      upsertDeckCards(payload.worstMatchupCurrentRange.deckKey, payload.worstMatchupCurrentRange.cardIds ?? []);
     }
     if (payload?.worstMatchupAllTime?.deckKey) {
-      map.set(payload.worstMatchupAllTime.deckKey, payload.worstMatchupAllTime.cardIds ?? []);
+      upsertDeckCards(payload.worstMatchupAllTime.deckKey, payload.worstMatchupAllTime.cardIds ?? []);
     }
     for (const lane of payload?.trophyMap.ranges ?? []) {
-      map.set(lane.deckKey, lane.cardIds ?? []);
+      upsertDeckCards(lane.deckKey, lane.cardIds ?? []);
     }
     for (const lane of payload?.trophyMap.playerRanges ?? []) {
-      map.set(lane.deckKey, lane.cardIds ?? []);
+      upsertDeckCards(lane.deckKey, lane.cardIds ?? []);
     }
     for (const lane of payload?.trophyMap.opponentRanges ?? []) {
-      map.set(lane.deckKey, lane.cardIds ?? []);
+      upsertDeckCards(lane.deckKey, lane.cardIds ?? []);
     }
     for (const opponent of payload?.directOpponents ?? []) {
       if (opponent.latestPlayerDeckKey && opponent.latestPlayerDeckCardIds?.length === 8) {
-        map.set(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds);
+        upsertDeckCards(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds);
       }
       if (opponent.latestOpponentDeckKey && opponent.latestOpponentDeckCardIds?.length === 8) {
-        map.set(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds);
+        upsertDeckCards(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds);
       }
     }
     for (const change of payload?.deckChanges ?? []) {
       if (change.oldDeckKey && change.oldDeckCardIds?.length === 8) {
-        map.set(change.oldDeckKey, change.oldDeckCardIds);
+        upsertDeckCards(change.oldDeckKey, change.oldDeckCardIds);
       }
       if (change.newDeckKey && change.newDeckCardIds?.length === 8) {
-        map.set(change.newDeckKey, change.newDeckCardIds);
+        upsertDeckCards(change.newDeckKey, change.newDeckCardIds);
       }
     }
     for (const deck of payload?.playerDeckCatalog ?? []) {
-      map.set(deck.deckKey, deck.cardIds ?? []);
+      upsertDeckCards(deck.deckKey, deck.cardIds ?? []);
     }
 
     return map;
   }, [payload]);
+
+  const resolveDeckCardIds = (
+    deckKey: string | null | undefined,
+    cardIds: number[] | null | undefined
+  ) => {
+    if (Array.isArray(cardIds) && cardIds.length === 8) {
+      return cardIds;
+    }
+    if (deckKey) {
+      const fallback = deckCardsByKey.get(deckKey);
+      if (fallback && fallback.length === 8) {
+        return fallback;
+      }
+    }
+    return Array.isArray(cardIds) ? cardIds : [];
+  };
 
   const comparisonRows = useMemo(() => {
     if ((payload?.playerDecksVsAverage?.length ?? 0) > 0) {
@@ -402,6 +443,21 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
       .sort((a, b) => b.games - a.games);
   }, [payload]);
 
+  const competitiveDeckCatalog = useMemo(
+    () =>
+      (payload?.playerDeckCatalog ?? []).filter(
+        (deck) => {
+          const normalizedMode = deck.mode?.trim().toLowerCase();
+          const hasExplicitMode = Boolean(normalizedMode && normalizedMode !== "unknown");
+          if (hasExplicitMode) {
+            return isCompetitiveDeckMode(deck.mode);
+          }
+          return deck.category === "trophy_road" || deck.category === "ranked";
+        }
+      ),
+    [payload?.playerDeckCatalog]
+  );
+
   const renderDecksVsAverage = () => (
     <section className="glass-panel p-4 sm:p-5">
       <h2 className="font-display text-2xl font-bold text-white">{dict.dashboard.yourDecksVsAverage}</h2>
@@ -417,7 +473,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             {comparisonRows.map((row) => (
               <article key={row.deckKey} className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <DeckMini cardIds={row.cardIds} cardLookup={cardLookup} />
+                  <DeckMini
+                    cardIds={resolveDeckCardIds(row.deckKey, row.cardIds)}
+                    cardLookup={cardLookup}
+                  />
                   <div className="text-right">
                     <WinrateBadge value={row.yourWinrate} />
                     <p className="mt-1 text-xs text-slate-300">
@@ -452,7 +511,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   key={row.deckKey}
                   className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_0.8fr] items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3"
                 >
-                  <DeckMini cardIds={row.cardIds} cardLookup={cardLookup} />
+                  <DeckMini
+                    cardIds={resolveDeckCardIds(row.deckKey, row.cardIds)}
+                    cardLookup={cardLookup}
+                  />
                   <WinrateBadge value={row.yourWinrate} />
                   <WinrateBadge value={row.averageWinrate} />
                   <p className="text-sm text-slate-200">
@@ -551,7 +613,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <WinrateBadge value={lane.winrate} />
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <DeckMini cardIds={lane.cardIds} cardLookup={cardLookup} />
+                  <DeckMini
+                    cardIds={resolveDeckCardIds(lane.deckKey, lane.cardIds)}
+                    cardLookup={cardLookup}
+                  />
                   <GamesCount count={lane.games} label={dict.dashboard.basedOnGames} />
                 </div>
               </article>
@@ -626,9 +691,12 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
                     {locale === "fr" ? "Ton deck" : "Your deck"}
                   </p>
-                  {opponent.latestPlayerDeckCardIds?.length === 8 ? (
+                  {resolveDeckCardIds(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds).length === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={opponent.latestPlayerDeckCardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={resolveDeckCardIds(opponent.latestPlayerDeckKey, opponent.latestPlayerDeckCardIds)}
+                        cardLookup={cardLookup}
+                      />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">
@@ -640,9 +708,12 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300">
                     {locale === "fr" ? "Deck adverse" : "Opponent deck"}
                   </p>
-                  {opponent.latestOpponentDeckCardIds?.length === 8 ? (
+                  {resolveDeckCardIds(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds).length === 8 ? (
                     <div className="mt-2">
-                      <DeckMini cardIds={opponent.latestOpponentDeckCardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={resolveDeckCardIds(opponent.latestOpponentDeckKey, opponent.latestOpponentDeckCardIds)}
+                        cardLookup={cardLookup}
+                      />
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-300">
@@ -776,7 +847,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
             ? "Inclut les decks observés en Trophy Road et en Ranked."
             : "Includes decks observed in Trophy Road and Ranked."}
         </p>
-        {(payload?.playerDeckCatalog?.length ?? 0) === 0 ? (
+        {competitiveDeckCatalog.length === 0 ? (
           <div className="mt-3">
             <EmptyState
               title={dict.common.noData}
@@ -789,7 +860,7 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
           </div>
         ) : (
           <div className="mt-3 space-y-2">
-            {(payload?.playerDeckCatalog ?? []).map((deck) => (
+            {competitiveDeckCatalog.map((deck) => (
               <article
                 key={`${deck.deckKey}-${deck.mode}`}
                 className="rounded-lg border border-white/10 bg-black/20 p-2.5"
@@ -803,14 +874,18 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.1em] ${
                         deck.category === "ranked"
                           ? "border-violet-200/35 bg-violet-300/10 text-violet-100"
-                          : "border-cyan-200/35 bg-cyan-300/10 text-cyan-100"
+                          : deck.category === "trophy_road"
+                            ? "border-cyan-200/35 bg-cyan-300/10 text-cyan-100"
+                            : "border-slate-300/30 bg-slate-300/10 text-slate-200"
                       }`}
                     >
                       {deck.category === "ranked"
                         ? "Ranked"
-                        : locale === "fr"
+                        : deck.category === "trophy_road"
                           ? "Trophy Road"
-                          : "Trophy Road"}
+                          : locale === "fr"
+                            ? "Autre"
+                            : "Other"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -819,7 +894,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                   </div>
                 </div>
                 <div className="mt-2">
-                  <DeckMini cardIds={deck.cardIds} cardLookup={cardLookup} />
+                  <DeckMini
+                    cardIds={resolveDeckCardIds(deck.deckKey, deck.cardIds)}
+                    cardLookup={cardLookup}
+                  />
                 </div>
               </article>
             ))}
@@ -1116,7 +1194,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       <WinrateBadge value={selectedBestDeck.winrate} />
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <DeckMini cardIds={selectedBestDeck.cardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={resolveDeckCardIds(selectedBestDeck.deckKey, selectedBestDeck.cardIds)}
+                        cardLookup={cardLookup}
+                      />
                       <GamesCount count={selectedBestDeck.games} label={dict.dashboard.basedOnGames} />
                     </div>
                   </>
@@ -1145,7 +1226,10 @@ export default function PlayerDashboard({ locale, initialTag }: PlayerDashboardP
                       </span>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <DeckMini cardIds={selectedWorstMatchup.cardIds} cardLookup={cardLookup} />
+                      <DeckMini
+                        cardIds={resolveDeckCardIds(selectedWorstMatchup.deckKey, selectedWorstMatchup.cardIds)}
+                        cardLookup={cardLookup}
+                      />
                       <GamesCount count={selectedWorstMatchup.games} label={dict.dashboard.basedOnGames} />
                     </div>
                   </>

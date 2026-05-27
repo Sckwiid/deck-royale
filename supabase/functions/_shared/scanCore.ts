@@ -241,6 +241,43 @@ const MIN_GAMES_FOR_TROPHY_MAP = 5;
 const MIN_GAMES_FOR_PLAYER_BEST_DECK = 10;
 const MIN_GAMES_FOR_WORST_MATCHUP = 5;
 const TROPHY_MAP_WINDOW_BUCKETS = 5;
+const DECK_KEYS_BATCH_SIZE = 200;
+
+const chunkArray = <T>(values: T[], size: number): T[][] => {
+  if (size <= 0 || values.length === 0) return [values];
+  const chunks: T[][] = [];
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size));
+  }
+  return chunks;
+};
+
+const fetchDeckRowsByKeys = async (
+  supabaseAdmin: SupabaseClient,
+  deckKeys: string[],
+  columns: string
+) => {
+  const uniqueKeys = [...new Set(deckKeys.filter(Boolean))];
+  if (uniqueKeys.length === 0) return [] as Array<Record<string, unknown>>;
+
+  const rows: Array<Record<string, unknown>> = [];
+  const batches = chunkArray(uniqueKeys, DECK_KEYS_BATCH_SIZE);
+
+  for (const batch of batches) {
+    const { data, error } = await supabaseAdmin
+      .from("decks")
+      .select(columns)
+      .in("deck_key", batch);
+
+    if (error) {
+      throw new Error(`Could not fetch deck rows: ${error.message}`);
+    }
+
+    rows.push(...((data as Array<Record<string, unknown>> | null) ?? []));
+  }
+
+  return rows;
+};
 
 const isTrophyCompetitiveMode = (mode: string | null | undefined) =>
   typeof mode === "string" &&
@@ -390,16 +427,12 @@ const fetchDeckLookupByKeys = async (
   supabaseAdmin: SupabaseClient,
   deckKeys: string[]
 ): Promise<Map<string, { cardIds: number[]; avgElixir: number | null }>> => {
-  const uniqueKeys = [...new Set(deckKeys.filter(Boolean))];
   const lookup = new Map<string, { cardIds: number[]; avgElixir: number | null }>();
-  if (uniqueKeys.length === 0) {
-    return lookup;
-  }
-
-  const { data: deckRows } = await supabaseAdmin
-    .from("decks")
-    .select("deck_key, card_ids, avg_elixir")
-    .in("deck_key", uniqueKeys);
+  const deckRows = await fetchDeckRowsByKeys(
+    supabaseAdmin,
+    deckKeys,
+    "deck_key, card_ids, avg_elixir"
+  );
 
   for (const row of deckRows ?? []) {
     lookup.set(row.deck_key as string, {
@@ -1669,12 +1702,9 @@ const fetchDirectOpponentsDetailed = async (
         .filter((value): value is string => Boolean(value))
     )
   ];
-  const { data: deckRows } = latestDeckKeys.length
-    ? await supabaseAdmin
-        .from("decks")
-        .select("deck_key, card_ids")
-        .in("deck_key", latestDeckKeys)
-    : { data: [] as Array<{ deck_key: string; card_ids: number[] }> };
+  const deckRows = latestDeckKeys.length
+    ? await fetchDeckRowsByKeys(supabaseAdmin, latestDeckKeys, "deck_key, card_ids")
+    : [];
 
   const cardsByDeck = new Map<string, number[]>();
   for (const row of deckRows ?? []) {
